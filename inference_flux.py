@@ -18,7 +18,7 @@ import time
 import torch
 import torch_npu
 import argparse
-from .FLUX1dev import FluxPipeline
+from FLUX1dev import FluxPipeline
 
 from torch_npu.contrib import transfer_to_npu
 
@@ -93,9 +93,9 @@ def parse_arguments():
     parser.add_argument("--save_path", type=str, default="./res", help="ouput image path")
     parser.add_argument("--device_id", type=int, default=0, help="NPU device id")
     parser.add_argument("--device", type=str, default="npu", help="NPU")
-    parser.add_argument("--prompt_path", type=str, default="./promts.txt", help="input prompt text path")
+    parser.add_argument("--prompt_path", type=str, default="./prompts.txt", help="input prompt text path")
     parser.add_argument("--input_size", type=tuple, default=(1024, 1024), help='Image size (h, w)')
-    parser.add_argument("--infer_steps", type=int, default=25, help="Inference steps")
+    parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument('--seed', type=int, default=42, help="A seed for all the prompts")
     return parser.parse_args()
 

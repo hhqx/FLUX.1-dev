@@ -29,7 +29,7 @@ from diffusers.models.normalization import AdaLayerNormContinuous, AdaLayerNormZ
 from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
-from diffusers.modeling_outputs import Transformer2DModelOutput
+from diffusers.models.modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
