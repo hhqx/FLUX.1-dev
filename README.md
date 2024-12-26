@@ -83,7 +83,7 @@ python inference_flux.py \
        --device_id 0 \
        --device "npu" \
        --prompt_path "./prompts.txt" \
-       --input_size (1024, 1024) \
+       --input_size 1024 1024 \
        --infer_steps 50 \
        --seed 42
 ```
