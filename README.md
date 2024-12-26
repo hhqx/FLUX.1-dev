@@ -83,7 +83,8 @@ python inference_flux.py \
        --device_id 0 \
        --device "npu" \
        --prompt_path "./prompts.txt" \
-       --input_size 1024 1024 \
+       --width 1024 \
+       --height 1024 \
        --infer_steps 50 \
        --seed 42
 ```
@@ -93,6 +94,7 @@ python inference_flux.py \
 - device_id: 推理设备ID，默认值设置为0
 - device: 推理设备类型，默认为npu
 - prompt_path: 用于图像生成的文字描述提示的列表文件路径
-- input_size: 图像生成的宽高，第一维度为宽度，第二维度为高度，默认1024*1024
+- width: 图像生成的宽度，默认1024
+- height: 图像生成的高度，默认1024
 - infer_steps: Flux图像推理步数，默认值为50
 - seed: 设置随机种子，默认值为42

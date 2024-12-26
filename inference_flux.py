@@ -94,7 +94,8 @@ def parse_arguments():
     parser.add_argument("--device_id", type=int, default=0, help="NPU device id")
     parser.add_argument("--device", type=str, default="npu", help="NPU")
     parser.add_argument("--prompt_path", type=str, default="./prompts.txt", help="input prompt text path")
-    parser.add_argument("--input_size", type=list, default=[1024, 1024], help='Image size h w', nargs='+')
+    parser.add_argument("--width", type=int, default=1024, help='Image size width')
+    parser.add_argument("--height", type=int, default=1024, help='Image size height')
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument('--seed', type=int, default=42, help="A seed for all the prompts")
     return parser.parse_args()
@@ -121,8 +122,8 @@ def infer(args):
 
         image = pipe(
             prompts,
-            height=args.input_size[0],
-            width=args.input_size[1],
+            height=args.width,
+            width=args.height,
             guidance_scale=3.5,
             num_inference_steps=args.infer_steps,
             max_sequence_length=512,
