@@ -1,5 +1,11 @@
 ---
-license: apache-2.0
+license: other
+pipeline_tag: text-to-image
+hardwares:
+  - NPU
+library_name: openmind
+frameworks:
+  - PyTorch
 ---
 ## 一、准备运行环境
 
