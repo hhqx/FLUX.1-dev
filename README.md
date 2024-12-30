@@ -3,9 +3,10 @@ license: other
 pipeline_tag: text-to-image
 hardwares:
   - NPU
-library_name: openmind
 frameworks:
   - PyTorch
+language:
+  - en
 ---
 ## 一、准备运行环境
 
