@@ -1,5 +1,12 @@
 ---
-license: apache-2.0
+license: other
+pipeline_tag: text-to-image
+hardwares:
+  - NPU
+frameworks:
+  - PyTorch
+language:
+  - en
 ---
 ## 一、准备运行环境
 
