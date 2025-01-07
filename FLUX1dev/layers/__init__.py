@@ -14,3 +14,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from .attention_processor import (FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0)
+from .embedding import FluxPosEmbed
