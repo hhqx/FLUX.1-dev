@@ -708,6 +708,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
+                    image_rotary_emb=image_rotary_emb,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
