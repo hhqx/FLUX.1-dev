@@ -681,7 +681,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             text_ids = text_ids[0]
         if latent_image_ids.ndim == 3:
             latent_image_ids = latent_image_ids[0]
-        ids = torch.cat((text_ids, latent_image_ids), dim=1)
+        ids = torch.cat((text_ids, latent_image_ids), dim=0)
         image_rotary_emb = self.transformer.pos_embed(ids)
         image_rotary_emb = [freq.to(torch.bfloat16) for freq in image_rotary_emb]
 
