@@ -677,6 +677,14 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        if text_ids.ndim == 3:
+            text_ids = text_ids[0]
+        if latent_image_ids.ndim == 3:
+            latent_image_ids = latent_image_ids[0]
+        ids = torch.cat((text_ids, latent_image_ids), dim=1)
+        image_rotary_emb = self.transformer.pos_embed(ids)
+        image_rotary_emb = [freq.to(torch.bfloat16) for freq in image_rotary_emb]
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):

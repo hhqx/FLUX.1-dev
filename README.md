@@ -60,6 +60,14 @@ tar -xzvf pytorch_v{pytorchversion}_py{pythonversion}.tar.gz
 # 解压后，会有whl包
 pip install torch_npu-{pytorchversion}.xxxx.{arch}.whl
 ```
+
+### 安装mindspeed依赖
+```shell
+# 下载mindspeed源码仓：
+git clone https://gitee.com/ascend/MindSpeed.git
+# 执行如下命令进行安装：
+pip install -e MindSpeed
+```
 ## 二、下载本仓库
 
 ### 2.1 下载到本地
@@ -73,8 +81,50 @@ Flux.1-DEV权重下载地址
 ```shell
 https://huggingface.co/black-forest-labs/FLUX.1-dev/tree/main
 ```
+
 设置模型权重路径环境变量：
+```bash
 export model_path="your local flux model path"
+```
+修改权重配置文件：
+```bash
+vi ${model_path}/model_index.json
+````
+做如下修改：
+```json
+{
+  "_class_name": "FluxPipeline",
+  "_diffusers_version": "0.30.0.dev0",
+  "scheduler": [
+    "diffusers",
+    "FlowMatchEulerDiscreteScheduler"
+  ],
+  "text_encoder": [
+    "transformers",
+    "CLIPTextModel"
+  ],
+  "text_encoder_2": [
+    "transformers",
+    "T5EncoderModel"
+  ],
+  "tokenizer": [
+    "transformers",
+    "CLIPTokenizer"
+  ],
+  "tokenizer_2": [
+    "transformers",
+    "T5TokenizerFast"
+  ],
+  "transformer": [
+    "FLUX1dev",
+    "FluxTransformer2DModel"
+  ],
+  "vae": [
+    "diffusers",
+    "AutoencoderKL"
+  ]
+}
+```
 ### 3.2 运行Flux
 ```shell
 python inference_flux.py \

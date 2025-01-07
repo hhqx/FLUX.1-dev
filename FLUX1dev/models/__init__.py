@@ -13,4 +13,5 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from .modeling_utils import ModelMixin
 from .transformer_flux import FluxTransformer2DModel

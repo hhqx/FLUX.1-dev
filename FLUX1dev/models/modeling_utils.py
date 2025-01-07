@@ -1,0 +1,1 @@
+from diffusers.models.modeling.utils import ModelMixin

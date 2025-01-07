@@ -13,4 +13,5 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .pipeline import FluxPipeline
+from .models import FluxTransformer2DModel, ModelMixin
+from .pipeline import FluxPipeline, DiffusionPipeline
