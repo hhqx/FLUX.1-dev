@@ -143,7 +143,8 @@ python inference_flux.py \
        --width 1024 \
        --height 1024 \
        --infer_steps 50 \
-       --seed 42
+       --seed 42 \
+       --use_cache
 ```
 参数说明：
 - path: Flux本地模型权重路径，默认读取当前文件夹下的flux文件夹
@@ -155,3 +156,4 @@ python inference_flux.py \
 - height: 图像生成的高度，默认1024
 - infer_steps: Flux图像推理步数，默认值为50
 - seed: 设置随机种子，默认值为42
+- use_cache: 是否开启dit cache近似优化
