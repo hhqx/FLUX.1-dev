@@ -541,21 +541,21 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 cache_dict['use_cache'] = True
         
         if not cache_dict['use_cache']:
-            hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotart_emb,
+            hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotary_emb,
                                                        0,len(self.single_transformer_blocks))
         else:
-            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotart_emb,
+            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotary_emb,
                                                         0, cache_dict['cache_start_single_block'])
             cache_end = np.minimum(cache_dict['cache_start_single_block']+cache_dict['num_cache_layer_single_block'],len(self.single_transformer_blocks))
             hidden_states_before_cache = hidden_states.clone()
             if step_idx % cache_dict['cache_interval'] == (cache_dict['cache_start_steps'] % 2):
-                hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotart_emb,
+                hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotary_emb,
                                                                  cache_dict['cache_start_single_block'],cache_end)
                 self.delta_cache_block2 = hidden_states - hidden_states_before_cache
             else:
                 hidden_states = hidden_states_before_cache + self.delta_cache_block2
 
-            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotart_emb,
+            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotary_emb,
                                                              cache_dict, len(self.single_transformer_blocks))
         return hidden_states
 
