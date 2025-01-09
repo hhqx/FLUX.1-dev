@@ -531,7 +531,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             )
         return hidden_states
 
-    def forward_single_blocks(self, hidden_states, temb, image_rotart_emb, cache_dict, step_idx):
+    def forward_single_blocks(self, hidden_states, temb, image_rotary_emb, cache_dict, step_idx):
         if(cache_dict['num_cache_layer_single_block'] == 0):
             cache_dict['use_cache'] = False
         else:
