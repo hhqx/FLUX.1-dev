@@ -327,7 +327,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         image_rotary_emb: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        use_cache: bool = True,
+        cache_dict: list = None,
         return_dict: bool = True,
+        step_idx: int = 0,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
@@ -386,65 +389,80 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         #ids = torch.cat((txt_ids, img_ids), dim=1)
         #image_rotary_emb = self.pos_embed(ids)
 
-        for index_block, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+        # for index_block, block in enumerate(self.transformer_blocks):
+        #     if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
+        #         def create_custom_forward(module, return_dict=None):
+        #             def custom_forward(*inputs):
+        #                 if return_dict is not None:
+        #                     return module(*inputs, return_dict=return_dict)
+        #                 else:
+        #                     return module(*inputs)
 
-                    return custom_forward
+        #             return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
-                )
+        #         ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+        #         encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+        #             create_custom_forward(block),
+        #             hidden_states,
+        #             encoder_hidden_states,
+        #             temb,
+        #             image_rotary_emb,
+        #             **ckpt_kwargs,
+        #         )
 
-            else:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
-                )
+        #     else:
+        #         encoder_hidden_states, hidden_states = block(
+        #             hidden_states=hidden_states,
+        #             encoder_hidden_states=encoder_hidden_states,
+        #             temb=temb,
+        #             image_rotary_emb=image_rotary_emb,
+        #         )
+        encoder_hidden_states, hidden_states = self.forward_blocks(
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            temb=temb,
+            image_rotary_emb=image_rotary_emb,
+            cache_dict=cache_dict,
+            step_idx=step_idx,
+        )
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        for index_block, block in enumerate(self.single_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+        # for index_block, block in enumerate(self.single_transformer_blocks):
+        #     if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
+        #         def create_custom_forward(module, return_dict=None):
+        #             def custom_forward(*inputs):
+        #                 if return_dict is not None:
+        #                     return module(*inputs, return_dict=return_dict)
+        #                 else:
+        #                     return module(*inputs)
 
-                    return custom_forward
+        #             return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
-                )
+        #         ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+        #         hidden_states = torch.utils.checkpoint.checkpoint(
+        #             create_custom_forward(block),
+        #             hidden_states,
+        #             temb,
+        #             image_rotary_emb,
+        #             **ckpt_kwargs,
+        #         )
 
-            else:
-                hidden_states = block(
-                    hidden_states=hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
-                )
+        #     else:
+        #         hidden_states = block(
+        #             hidden_states=hidden_states,
+        #             temb=temb,
+        #             image_rotary_emb=image_rotary_emb,
+        #         )
+        hidden_states = self.forward_single_blocks(
+            hidden_states=hidden_states,
+            temb=temb,
+            image_rotary_emb=image_rotary_emb,
+            cache_dict=cache_dict,
+            step_idx=step_idx,
+        )
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
@@ -459,3 +477,85 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
+    
+    def forward_blocks_range(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, start_idx, end_idx):
+        for block_idx, block in enumerate(self.transformer_blocks[start_idx:end_idx]):
+            encoder_hidden_states,hidden_states = block(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                temb=temb,
+                image_rotary_emb=image_rotary_emb,
+            )
+        return hidden_states,encoder_hidden_states
+
+
+    def forward_blocks(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, cache_dict, step_idx):
+        if(cache_dict['num_cache_layer_block'] == 0):
+            cache_dict['use_cache'] = False
+        else:
+            if step_idx < cache_dict['cache_start_steps']:
+                cache_dict['use_cache'] = False
+            else:
+                cache_dict['use_cache'] = True
+        
+        if not cache_dict['use_cache']:
+            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states,encoder_hidden_states,temb,image_rotary_emb,
+                                                                             0,len(self.transformer_blocks))
+        else:
+            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states,encoder_hidden_states,temb,image_rotary_emb,
+                                                                             0, cache_dict['cache_start_block'])
+            cache_end = np.minimum(cache_dict['cache_start_block'] + cache_dict['num_cache_layer_block'], len(self.transformer_blocks))
+            hidden_states_before_cache = hidden_states.clone()
+            encoder_hidden_states_before_cache = encoder_hidden_states.clone()
+            if step_idx % cache_dict['cache_interval'] == (cache_dict['cache_start_steps'] % 2):
+                hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states, encoder_hidden_states, temb, image_rotary_emb,
+                                                                                 cache_dict['cache_start_block'], cache_end)
+                self.delta_cache = hidden_states - hidden_states_before_cache
+                if encoder_hidden_states is not None:
+                    self.delta_cache_hidden = encoder_hidden_states - encoder_hidden_states_before_cache
+            else:
+                hidden_states = hidden_states_before_cache + self.delta_cache
+                if self.delta_cache_hidden is not None:
+                    encoder_hidden_states = encoder_hidden_states_before_cache + self.delta_cache_hidden
+
+            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states, encoder_hidden_states,temb,image_rotary_emb,
+                                                                             cache_end,len(self.transformer_blocks))
+        return encoder_hidden_states, hidden_states
+    
+    def forward_single_blocks_range(self, hidden_states, temb, image_rotart_emb, start_idx, end_idx):
+        for block_idx, block in enumerate(self.single_transformer_blocks[start_idx:end_idx]):
+            hidden_states = block(
+                hidden_states=hidden_states,
+                temb=temb,
+                image_rotart_emb=image_rotart_emb,
+            )
+        return hidden_states
+
+    def forward_single_blocks(self, hidden_states, temb, image_rotart_emb, cache_dict, step_idx):
+        if(cache_dict['num_cache_layer_single_block'] == 0):
+            cache_dict['use_cache'] = False
+        else:
+            if step_idx < cache_dict['cache_start_steps']:
+                cache_dict['use_cache'] = False
+            else:
+                cache_dict['use_cache'] = True
+        
+        if not cache_dict['use_cache']:
+            hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotart_emb,
+                                                       0,len(self.single_transformer_blocks))
+        else:
+            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotart_emb,
+                                                        0, cache_dict['cache_start_single_block'])
+            cache_end = np.minimum(cache_dict['cache_start_single_block']+cache_dict['num_cache_layer_single_block'],len(self.single_transformer_blocks))
+            hidden_states_before_cache = hidden_states.clone()
+            if step_idx % cache_dict['cache_interval'] == (cache_dict['cache_start_steps'] % 2):
+                hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotart_emb,
+                                                                 cache_dict['cache_start_single_block'],cache_end)
+                self.delta_cache_block2 = hidden_states - hidden_states_before_cache
+            else:
+                hidden_states = hidden_states_before_cache + self.delta_cache_block2
+
+            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotart_emb,
+                                                             cache_dict, len(self.single_transformer_blocks))
+        return hidden_states
+

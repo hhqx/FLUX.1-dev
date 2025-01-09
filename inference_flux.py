@@ -24,6 +24,14 @@ from torch_npu.contrib import transfer_to_npu
 
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
+cache_dict = {}
+cache_dict['cache_start_block'] = 5
+cache_dict['num_cache_layer_block'] = 13
+cache_dict['cache_satrt_single_block'] = 1
+cache_dict['num_cache_layer_single_block'] = 23
+cache_dict['cache_start_steps'] = 18
+cache_dict['cache_interval'] = 2
+
 class PromptLoader:
     def __init__(
             self,
@@ -97,7 +105,8 @@ def parse_arguments():
     parser.add_argument("--width", type=int, default=1024, help='Image size width')
     parser.add_argument("--height", type=int, default=1024, help='Image size height')
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
-    parser.add_argument('--seed', type=int, default=42, help="A seed for all the prompts")
+    parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
+    parser.add_argument("--use_cache", type=bool, default=True, help="turn on dit cache or not")
     return parser.parse_args()
 
 def infer(args):
@@ -128,6 +137,8 @@ def infer(args):
             num_inference_steps=args.infer_steps,
             max_sequence_length=512,
             generator=torch.Generator().manual_seed(args.seed)
+            use_cache=args.use_cache,
+            cache_dict=cache_dict,
         ).images[0]
 
         if infer_num > 3:
