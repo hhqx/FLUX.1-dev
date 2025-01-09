@@ -106,7 +106,7 @@ def parse_arguments():
     parser.add_argument("--height", type=int, default=1024, help='Image size height')
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
-    parser.add_argument("--use_cache", type=bool, default=True, help="turn on dit cache or not")
+    parser.add_argument("--use_cache", action="store_true", help="turn on dit cache or not")
     return parser.parse_args()
 
 def infer(args):
