@@ -136,7 +136,7 @@ def infer(args):
             guidance_scale=3.5,
             num_inference_steps=args.infer_steps,
             max_sequence_length=512,
-            generator=torch.Generator().manual_seed(args.seed)
+            generator=torch.Generator().manual_seed(args.seed),
             use_cache=args.use_cache,
             cache_dict=cache_dict,
         ).images[0]
