@@ -386,38 +386,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        #ids = torch.cat((txt_ids, img_ids), dim=1)
-        #image_rotary_emb = self.pos_embed(ids)
-
-        # for index_block, block in enumerate(self.transformer_blocks):
-        #     if self.training and self.gradient_checkpointing:
-
-        #         def create_custom_forward(module, return_dict=None):
-        #             def custom_forward(*inputs):
-        #                 if return_dict is not None:
-        #                     return module(*inputs, return_dict=return_dict)
-        #                 else:
-        #                     return module(*inputs)
-
-        #             return custom_forward
-
-        #         ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-        #         encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-        #             create_custom_forward(block),
-        #             hidden_states,
-        #             encoder_hidden_states,
-        #             temb,
-        #             image_rotary_emb,
-        #             **ckpt_kwargs,
-        #         )
-
-        #     else:
-        #         encoder_hidden_states, hidden_states = block(
-        #             hidden_states=hidden_states,
-        #             encoder_hidden_states=encoder_hidden_states,
-        #             temb=temb,
-        #             image_rotary_emb=image_rotary_emb,
-        #         )
         encoder_hidden_states, hidden_states = self.forward_blocks(
             hidden_states=hidden_states,
             encoder_hidden_states=encoder_hidden_states,
@@ -429,33 +397,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        # for index_block, block in enumerate(self.single_transformer_blocks):
-        #     if self.training and self.gradient_checkpointing:
-
-        #         def create_custom_forward(module, return_dict=None):
-        #             def custom_forward(*inputs):
-        #                 if return_dict is not None:
-        #                     return module(*inputs, return_dict=return_dict)
-        #                 else:
-        #                     return module(*inputs)
-
-        #             return custom_forward
-
-        #         ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-        #         hidden_states = torch.utils.checkpoint.checkpoint(
-        #             create_custom_forward(block),
-        #             hidden_states,
-        #             temb,
-        #             image_rotary_emb,
-        #             **ckpt_kwargs,
-        #         )
-
-        #     else:
-        #         hidden_states = block(
-        #             hidden_states=hidden_states,
-        #             temb=temb,
-        #             image_rotary_emb=image_rotary_emb,
-        #         )
         hidden_states = self.forward_single_blocks(
             hidden_states=hidden_states,
             temb=temb,
@@ -556,6 +497,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 hidden_states = hidden_states_before_cache + self.delta_cache_block2
 
             hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotary_emb,
-                                                             cache_dict, len(self.single_transformer_blocks))
+                                                             cache_end, len(self.single_transformer_blocks))
         return hidden_states
 

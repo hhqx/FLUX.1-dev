@@ -717,6 +717,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                     use_cache=use_cache,
                     cache_dict=cache_dict,
                     return_dict=False,
+                    step_idx=i,
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
