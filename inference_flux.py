@@ -107,12 +107,16 @@ def parse_arguments():
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
     parser.add_argument("--use_cache", action="store_true", help="turn on dit cache or not")
+    parser.add_argument("--device_type", choices=["A2-32g", "A2-64g"], default="A2-32g", help="specify device type")
     return parser.parse_args()
 
 def infer(args):
     torch.npu.set_device(args.device_id)
     pipe = FluxPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16)
-    pipe.enable_model_cpu_offload()
+    if args.device_type == "A2-32g":
+        pipe.enable_model_cpu_offload()
+    else:
+        pipe.to(f"npu:{args.device_id}")
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path, mode=0o640)
