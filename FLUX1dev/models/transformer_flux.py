@@ -522,12 +522,12 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                                                                              cache_end,len(self.transformer_blocks))
         return encoder_hidden_states, hidden_states
     
-    def forward_single_blocks_range(self, hidden_states, temb, image_rotart_emb, start_idx, end_idx):
+    def forward_single_blocks_range(self, hidden_states, temb, image_rotary_emb, start_idx, end_idx):
         for block_idx, block in enumerate(self.single_transformer_blocks[start_idx:end_idx]):
             hidden_states = block(
                 hidden_states=hidden_states,
                 temb=temb,
-                image_rotart_emb=image_rotart_emb,
+                image_rotary_emb=image_rotary_emb,
             )
         return hidden_states
 
