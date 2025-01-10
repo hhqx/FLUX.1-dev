@@ -393,6 +393,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             image_rotary_emb=image_rotary_emb,
             cache_dict=cache_dict,
             step_idx=step_idx,
+            use_cache=use_cache,
         )
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -403,6 +404,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             image_rotary_emb=image_rotary_emb,
             cache_dict=cache_dict,
             step_idx=step_idx,
+            use_cache=use_cache,
         )
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
@@ -430,8 +432,8 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         return hidden_states,encoder_hidden_states
 
 
-    def forward_blocks(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, cache_dict, step_idx):
-        if(cache_dict['num_cache_layer_block'] == 0):
+    def forward_blocks(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, cache_dict, step_idx,use_cache):
+        if(use_cache==False or cache_dict['num_cache_layer_block'] == 0):
             cache_dict['use_cache'] = False
         else:
             if step_idx < cache_dict['cache_start_steps']:
@@ -472,8 +474,8 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             )
         return hidden_states
 
-    def forward_single_blocks(self, hidden_states, temb, image_rotary_emb, cache_dict, step_idx):
-        if(cache_dict['num_cache_layer_single_block'] == 0):
+    def forward_single_blocks(self, hidden_states, temb, image_rotary_emb, cache_dict, step_idx,use_cache):
+        if(use_cache==False or cache_dict['num_cache_layer_single_block'] == 0):
             cache_dict['use_cache'] = False
         else:
             if step_idx < cache_dict['cache_start_steps']:
