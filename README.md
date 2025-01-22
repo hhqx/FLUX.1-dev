@@ -159,3 +159,11 @@ python inference_flux.py \
 - seed: 设置随机种子，默认值为42
 - use_cache: 是否开启dit cache近似优化
 - device_type: device类型，有A2-32g与A2-64g两个选项
+
+性能参考下列数据。
+
+### Flux.1-DEV
+
+| 硬件形态  | cpu规格 | batch size | 迭代次数 | 优化手段 | 平均耗时 | 精度  | 采样器 | 备注 |
+| :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
+| Atlas 800I A2 (64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | clip score 0.367 | FlowMatchEuler | 单卡运行 |

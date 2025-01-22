@@ -38,9 +38,12 @@ def apply_fa(query, key, value, attention_mask):
     actseqlen = query.shape[-2]
     actseqlenkv = key.shape[-2]
     
-    hidden_states, _ = torch_npu.npu_fused_infer_attention_score(query, key, value, 
-            actual_seq_lengths = [actseqlen], actual_seq_lengths_kv = [actseqlenkv],
-            num_heads = heads, input_layout = "BNSD", scale = head_dim**-0.5, pre_tokens=65535, next_tokens=65535)
+    hidden_states = torch_npu.npu_fusion_attention(query, key, value,
+        input_layout='BNSD',
+        scale=head_dim**-0.5,
+        pre_tockens=65535,
+        next_tockens=65535,
+        head_num=heads)[0]
     return hidden_states.transpose(1, 2).reshape(batch_size, -1, head_dim*heads)
 
 def rms_norm_npu(hidden_states, weight, eps):
