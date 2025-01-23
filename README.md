@@ -200,21 +200,13 @@ python3 tpsplit_weight.py --path ${model_path}
   "num_layers": 19,
   "num_single_layers": 38,
   "patch_size": 1,
-  "pooled_projection_dim": 768
+  "pooled_projection_dim": 768,
   "is_tp": true
 }
 ```
 3.执行命令运行Flux：
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py \ 
-      --device_type "A2-32g-dual" \ 
-      --path ${model_path} \
-      --prompt_path "./prompts.txt" \
-      --width 1024 \
-      --height 1024 \
-      --infer_steps 50 \
-      --seed 42 \
-      --use_cache
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_path "./prompts.txt" --width 1024 --height 1024 --infer_steps 50 --seed 42 --use_cache
 ```
 参数说明：
 - ASCEND_RT_VISIBLE_DEVICES: shell环境变量，用以绑定推理时实际使用的NPU

@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import os
 import shutil
 import torch
@@ -23,6 +22,7 @@ from safetensors.torch import load_file, save_file
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="./flux", help="Path to the flux model directory")
+    return parser.parse_args()
     #TODO: support multicard > 2 split
 
 def split_weight(file_path, transformer_path_0, transformer_path_1):
@@ -87,16 +87,16 @@ def split_weight(file_path, transformer_path_0, transformer_path_1):
             dict_rank1[key] = init_dict[key].contiguous()
     
     save_file(dict_rank0, os.path.join(transformer_path_0, file_name))
-    save_file(dict_rank1, os.path,join(transformer_path_1, file_name))
+    save_file(dict_rank1, os.path.join(transformer_path_1, file_name))
 
 
 if __name__ == "__main__":
     args = parse_arguments()
 
-    transformer_path = os.path.join(args.path, 'transformers')
+    transformer_path = os.path.join(args.path, 'transformer')
     if not os.path.exists(transformer_path):
-        print(f"the model path:{args.path} does not contain transformers, please check")
-        raise
+        print(f"the model path:{args.path} does not contain transformer, please check")
+        raise ValueError
     
     transformer_path_0 = transformer_path + '_0'
     if not os.path.exists(transformer_path_0):
