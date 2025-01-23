@@ -117,7 +117,8 @@ class Attention(nn.Module):
         self.pre_only = pre_only
         self.is_causal = is_causal
         self.is_tp = is_tp
-        self.world_size = get_world_size()
+        if is_tp:
+            self.world_size = get_world_size()
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
