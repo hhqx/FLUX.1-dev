@@ -19,6 +19,7 @@ import torch
 import torch_npu
 import argparse
 from FLUX1dev import FluxPipeline
+from FLUX1dev import get_local_rank, get_world_size, initialize_torch_distributed
 
 from torch_npu.contrib import transfer_to_npu
 
@@ -107,16 +108,29 @@ def parse_arguments():
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
     parser.add_argument("--use_cache", action="store_true", help="turn on dit cache or not")
-    parser.add_argument("--device_type", choices=["A2-32g", "A2-64g"], default="A2-32g", help="specify device type")
+    parser.add_argument("--device_type", choices=["A2-32g-single", "A2-32g-dual", "A2-64g"], default="A2-64g", help="specify device type")
     return parser.parse_args()
 
 def infer(args):
-    torch.npu.set_device(args.device_id)
+    if args.device_type == "A2-32g-dual":
+        from FLUX1dev import replace_tp_from_pretrain, replace_tp_extract_init_dict
+        FluxPipeline.from_pretrained = classmethod(replace_tp_from_pretrain)
+        FluxPipeline.extract_init_dict = classmethod(replace_tp_extract_init_dict)
     pipe = FluxPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16)
-    if args.device_type == "A2-32g":
+    if args.device_type == "A2-32g-single":
+        torch.npu.set_device(args.device_id)
         pipe.enable_model_cpu_offload()
-    else:
+    elif args.device_type == "A2-64g":
+        torch.npu.set_device(args.device_id)
         pipe.to(f"npu:{args.device_id}")
+    elif args.device_type == "A2-32g-dual":
+        local_rank = get_local_rank()
+        world_size = get_world_size()
+        initialize_torch_distributed(local_rank, world_size)
+        pipe.to(f"npu:{local_rank}")
+    else:
+        raise ValueError(f"Not support device type:{args.device_type}")
+
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path, mode=0o640)

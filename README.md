@@ -133,6 +133,7 @@ vi ${model_path}/model_index.json
 }
 ```
 ### 3.2 运行Flux
+#### 3.2.1 800I-A2-64g机器运行Flux
 ```shell
 python inference_flux.py \
        --path ${model_path} \
@@ -145,7 +146,7 @@ python inference_flux.py \
        --infer_steps 50 \
        --seed 42 \
        --use_cache \
-       --device_type "A2-32g"
+       --device_type "A2-64g"
 ```
 参数说明：
 - path: Flux本地模型权重路径，默认读取当前文件夹下的flux文件夹
@@ -158,12 +159,76 @@ python inference_flux.py \
 - infer_steps: Flux图像推理步数，默认值为50
 - seed: 设置随机种子，默认值为42
 - use_cache: 是否开启dit cache近似优化
-- device_type: device类型，有A2-32g与A2-64g两个选项
+- device_type: device类型，有A2-32g-single、A2-32g-dual、A2-64g三个选项
+#### 3.2.2 800I-A2-32g机器运行Flux
+- 单卡运行Flux
+```shell
+python inference_flux.py \
+       --path ${model_path} \
+       --save_path "./res" \
+       --device_id 0 \
+       --device "npu" \
+       --prompt_path "./prompts.txt" \
+       --width 1024 \
+       --height 1024 \
+       --infer_steps 50 \
+       --seed 42 \
+       --use_cache \
+       --device_type "A2-32g-single"
+```
+参数说明参照800I-A2-64g参数说明
+
+- 双卡运行Flux
+
+1.执行如下命令进行权重切分
+```shell
+python3 tpsplit_weight.py --path ${model_path}
+```
+备注：权重切分成功后，会在模型权重目录生成'transformer_0'与'transformer_1'两个文件夹，两个文件夹下内容与初始transformer文件夹文件相同，但大小不同，执行du -sh，大小应为15G
+
+2.修改transformer_0与transformer_1下的config文件，添加is_tp变量：
+```json
+{
+  "_class_name": "FluxTransformer2DModel",
+  "_diffusers_version": "0.30.0.dev0",
+  "_name_or_path": "../checkpoints/flux-dev/transformer",
+  "attention_head_dim": 128,
+  "guidance_embeds": true,
+  "in_channels": 64,
+  "joint_attention_dim": 4096,
+  "num_attention_heads": 24,
+  "num_layers": 19,
+  "num_single_layers": 38,
+  "patch_size": 1,
+  "pooled_projection_dim": 768
+  "is_tp": true
+}
+```
+3.执行命令运行Flux：
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py \ 
+      --device_type "A2-32g-dual" \ 
+      --path ${model_path} \
+      --prompt_path "./prompts.txt" \
+      --width 1024 \
+      --height 1024 \
+      --infer_steps 50 \
+      --seed 42 \
+      --use_cache
+```
+参数说明：
+- ASCEND_RT_VISIBLE_DEVICES: shell环境变量，用以绑定推理时实际使用的NPU
+- mast_port:master节点端口号，torch_run命令变量设置
+- nproc_per_node:分布式推理使用的NPU数量，设置为2
+其余参数说明参照800I-A2-64g参数说明
+
+
 
 性能参考下列数据。
 
 ### Flux.1-DEV
 
-| 硬件形态  | cpu规格 | batch size | 迭代次数 | 优化手段 | 平均耗时 | 精度  | 采样器 | 备注 |
-| :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
-| Atlas 800I A2 (64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | clip score 0.367 | FlowMatchEuler | 单卡运行 |
+| 硬件形态  | cpu规格 | batch size | 迭代次数 | 优化手段 | 平均耗时 | 采样器 | 备注 |
+| :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
+| Atlas 800I A2 (64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | FlowMatchEuler | 单卡运行 |
+| Atlas 800I A2 (32G) | 64核(arm) |  1  |  50  | with DiTCache |  24.6s   | FlowMatchEuler | 双卡运行 |

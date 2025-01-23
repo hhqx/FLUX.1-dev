@@ -19,12 +19,13 @@ import torch
 import torch_npu
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 import numpy as np
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import FromOriginalModelMixin, PeftAdapterMixin
-from diffusers.models.attention import FeedForward
-from diffusers.models.attention_processor import Attention
+from diffusers.models.activations import GEGLU, ApproximateGELU, SwiGLU, LinearActivation
+from ..layers import Attention, GELU
 from ..layers import FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0
 from .modeling_utils import ModelMixin
 from diffusers.models.modeling_utils import ModelMixin
@@ -34,6 +35,7 @@ from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
 from ..layers import FluxPosEmbed
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
+from ..utils import get_local_rank,get_world_size
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -88,14 +90,19 @@ class FluxSingleTransformerBlock(nn.Module):
             processing of `context` conditions.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, mlp_ratio=4.0):
+    def __init__(self, dim, num_attention_heads, attention_head_dim, mlp_ratio=4.0, is_tp=False):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
 
         self.norm = AdaLayerNormZeroSingle(dim)
-        self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
+        if is_tp:
+            self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim // 2)
+            self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim // 2)
+        else:
+            self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
+            self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
         self.act_mlp = nn.GELU(approximate="tanh")
-        self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
+        self.is_tp = is_tp
 
         processor = FluxSingleAttnProcessor2_0()
         self.attn = Attention(
@@ -109,6 +116,7 @@ class FluxSingleTransformerBlock(nn.Module):
             qk_norm="rms_norm",
             eps=1e-6,
             pre_only=True,
+            is_tp=is_tp,
         )
 
     def forward(
@@ -120,6 +128,11 @@ class FluxSingleTransformerBlock(nn.Module):
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+        if self.is_tp:
+            B,S,H = mlp_hidden_states.shape
+            mlp_hidden_states_full = torch.empty([get_world_size(),B, S, H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
+            dist.all_gather_into_tensor(mlp_hidden_states_full, mlp_hidden_states)
+            mlp_hidden_states = mlp_hidden_states_full.permute(1, 2, 0, 3).reshape([B, S, 2*H])
 
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
@@ -128,7 +141,13 @@ class FluxSingleTransformerBlock(nn.Module):
 
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
         gate = gate.unsqueeze(1)
-        hidden_states = gate * self.proj_out(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        if self.is_tp:
+            B,S,H = hidden_states.shape
+            hidden_states_all = torch.empty([get_world_size(),B,S,H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
+            dist.all_gather_into_tensor(hidden_states_all, hidden_states)
+            hidden_states = hidden_states_all.permute(1, 2, 0, 3).reshape([B, S, 2*H])
+        hidden_states = gate * hidden_states
         hidden_states = residual + hidden_states
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
@@ -151,7 +170,7 @@ class FluxTransformerBlock(nn.Module):
             processing of `context` conditions.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6):
+    def __init__(self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6, is_tp=False):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim)
@@ -176,17 +195,24 @@ class FluxTransformerBlock(nn.Module):
             processor=processor,
             qk_norm=qk_norm,
             eps=eps,
+            is_tp=is_tp,
         )
+        if is_tp:
+            out_bias = (get_local_rank() == 0)  #when tp, only card 0 support bias
+        else:
+            out_bias = True
 
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+        self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate", out_bias=out_bias, is_tp=is_tp)
 
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+        self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate", out_bias=out_bias, is_tp=is_tp)
 
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
+
+        self.is_tp = is_tp
 
     def forward(
         self,
@@ -194,6 +220,7 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
+        is_tp: bool=False,
     ):
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
@@ -216,6 +243,8 @@ class FluxTransformerBlock(nn.Module):
         norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         ff_output = self.ff(norm_hidden_states)
+        if self.is_tp:
+            dist.all_reduce(ff_output, op=dist.ReduceOp.SUM)
         ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = hidden_states + ff_output
@@ -229,6 +258,8 @@ class FluxTransformerBlock(nn.Module):
         norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
 
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
+        if self.is_tp:
+            dist.all_reduce(context_ff_output, op=dist.ReduceOp.SUM)
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
@@ -269,6 +300,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
         axes_dims_rope: List[int] = [16, 56, 56],
+        is_tp: bool = False,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -291,6 +323,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
+                    is_tp=is_tp,
                 )
                 for i in range(self.config.num_layers)
             ]
@@ -302,6 +335,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
+                    is_tp=is_tp,
                 )
                 for i in range(self.config.num_single_layers)
             ]
@@ -502,3 +536,57 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                                                              cache_end, len(self.single_transformer_blocks))
         return hidden_states
 
+
+class FeedForward(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        dim_out: Optional[int] = None,
+        mult: int = 4,
+        dropout: float = 0.0,
+        activation_fn: str = "geglu",
+        final_dropout: bool = False,
+        inner_dim=None,
+        bias: bool = True,
+        out_bias: bool = True,
+        is_tp: bool = True,
+    ):
+        super().__init__()
+        if inner_dim is None:
+            inner_dim = int(dim * mult)
+        dim_out = dim_out if dim_out is not None else dim
+
+        if activation_fn == "gelu":
+            act_fn = GELU(dim, inner_dim, bias=bias)
+        if activation_fn == "gelu-approximate":
+            act_fn = GELU(dim, inner_dim, approximate="tanh", bias=bias, is_tp=is_tp)
+        elif activation_fn == "geglu":
+            act_fn = GEGLU(dim, inner_dim, bias=bias)
+        elif activation_fn == "geglu-approximate":
+            act_fn = ApproximateGELU(dim, inner_dim, bias=bias)
+        elif activation_fn == "swiglu":
+            act_fn = SwiGLU(dim, inner_dim, bias=bias)
+        elif activation_fn == "linear-silu":
+            act_fn = LinearActivation(dim, inner_dim, bias=bias, activation="silu")
+
+        self.net = nn.ModuleList([])
+        # project in
+        self.net.append(act_fn)
+        # project dropout
+        self.net.append(nn.Dropout(dropout))
+        # project out
+        if is_tp:
+            self.net.append(nn.Linear(inner_dim // 2, dim_out, bias=out_bias))
+        else:
+            self.net.append(nn.Linear(inner_dim, dim_out, bias=out_bias))
+        # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
+        if final_dropout:
+            self.net.append(nn.Dropout(dropout))
+
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+        for module in self.net:
+            hidden_states = module(hidden_states)
+        return hidden_states
