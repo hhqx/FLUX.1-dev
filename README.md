@@ -18,8 +18,8 @@ language:
   | torch | 2.1.0 | - |
 
 ### 1.1 获取CANN&MindIE安装包&环境准备
-- [800I A2](https://www.hiascend.com/developer/download/community/result?module=pt+ie+cann&product=4&model=32)
-- [Duo卡](https://www.hiascend.com/developer/download/community/result?module=pt+ie+cann&product=2&model=17)
+- [Atlas 800I A2](https://www.hiascend.com/developer/download/community/result?module=pt+ie+cann&product=4&model=32)
+- [Atlas 300I Duo](https://www.hiascend.com/developer/download/community/result?module=pt+ie+cann&product=2&model=17)
 - [环境准备指导](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha002/softwareinst/instg/instg_0001.html)
 
 ### 1.2 CANN安装
@@ -133,7 +133,7 @@ vi ${model_path}/model_index.json
 }
 ```
 ### 3.2 运行Flux
-#### 3.2.1 800I-A2-64g机器运行Flux
+#### 3.2.1 Atlas-800I-A2-64g机器运行Flux
 ```shell
 python inference_flux.py \
        --path ${model_path} \
@@ -160,7 +160,7 @@ python inference_flux.py \
 - seed: 设置随机种子，默认值为42
 - use_cache: 是否开启dit cache近似优化
 - device_type: device类型，有A2-32g-single、A2-32g-dual、A2-64g三个选项
-#### 3.2.2 800I-A2-32g机器运行Flux
+#### 3.2.2 Atlas-800I-A2-32g机器运行Flux
 - 单卡运行Flux
 ```shell
 python inference_flux.py \
@@ -176,7 +176,7 @@ python inference_flux.py \
        --use_cache \
        --device_type "A2-32g-single"
 ```
-参数说明参照800I-A2-64g参数说明
+参数说明参照Atlas-800I-A2-64g参数说明
 
 - 双卡运行Flux
 
@@ -212,7 +212,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inf
 - ASCEND_RT_VISIBLE_DEVICES: shell环境变量，用以绑定推理时实际使用的NPU
 - mast_port:master节点端口号，torch_run命令变量设置
 - nproc_per_node:分布式推理使用的NPU数量，设置为2
-其余参数说明参照800I-A2-64g参数说明
+其余参数说明参照Atlas-800I-A2-64g参数说明
 
 
 
@@ -222,5 +222,5 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inf
 
 | 硬件形态  | cpu规格 | batch size | 迭代次数 | 优化手段 | 平均耗时 | 采样器 | 备注 |
 | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
-| Atlas 800I A2 (64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | FlowMatchEuler | 单卡运行 |
-| Atlas 800I A2 (32G) | 64核(arm) |  1  |  50  | with DiTCache |  24.6s   | FlowMatchEuler | 双卡运行 |
+| Atlas 800I A2(8*64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | FlowMatchEuler | 单卡运行 |
+| Atlas 800I A2(8*32G) | 64核(arm) |  1  |  50  | with DiTCache |  24.6s   | FlowMatchEuler | 双卡运行 |
