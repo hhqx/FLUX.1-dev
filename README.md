@@ -134,6 +134,11 @@ vi ${model_path}/model_index.json
 }
 ```
 ### 3.2 运行Flux
+可以在环境中导入以下环境变量提高推理性能：
+```shell
+export CPU_AFFINITY_CONF=2
+export TASK_QUEUE_ENABLE=2
+```
 #### 3.2.1 Atlas-800I-A2-64g机器运行Flux
 ```shell
 python inference_flux.py \
@@ -215,13 +220,136 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inf
 - nproc_per_node:分布式推理使用的NPU数量，设置为2
 其余参数说明参照Atlas-800I-A2-64g参数说明
 
+### 3.3 Flux推理精度测试
+#### 3.3.1 ClipScore测试
+1.准备模型与数据集
+```shell
+# 下载Parti数据集
+wget https://raw.githubusercontent.com/google-research/parti/main/PartiPrompts.tsv --no-check-certificate
 
+# 下载clip模型
+GIT_LFS_SKIP_SMUDGE=1
+git clone https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K
+```
+也可手动下载[clip模型](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K/blob/main/open_clip_pytorch_model.bin)权重
 
+2.推理Parti数据集，生成图像
+```shell
+# 单卡64G Flux 等价优化推理
+python inference_flux.py \
+       --path ${model_path} \
+       --save_path "./clipscore_res_wocache" \
+       --device_id 0 \
+       --device "npu" \
+       --prompt_path "./PartiPrompts.tsv" \
+       --prompt_type "parti" \
+       --num_images_per_prompt 4 \
+       --info_file_save_path "./clip_info_wocache.json" \
+       --width 1024 \
+       --height 1024 \
+       --infer_steps 50 \
+       --seed 42 \
+       --device_type "A2-64g"
+# 单卡64G Flux 近似优化推理
+python inference_flux.py \
+       --path ${model_path} \
+       --save_path "./clipscore_res_wcache" \
+       --device_id 0 \
+       --device "npu" \
+       --prompt_path "./PartiPrompts.tsv" \
+       --prompt_type "parti" \
+       --num_images_per_prompt 4 \
+       --info_file_save_path "./clip_info_wcache.json" \
+       --width 1024 \
+       --height 1024 \
+       --infer_steps 50 \
+       --seed 42 \
+       --use_cache \
+       --device_type "A2-64g"
+# 双卡32G Flux等价优化推理
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_path "./PartiPrompts.tsv" --prompt_type "parti" --num_images_per_prompt 4 --info_file_save_path "./clip_info_wocache.json" --width 1024 --height 1024 --infer_steps 50 --seed 42
+# 双卡32G Flux近似优化推理
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_path "./PartiPrompts.tsv" --prompt_type "parti" --num_images_per_prompt 4 --info_file_save_path "./clip_info_wcache.json" --width 1024 --height 1024 --infer_steps 50 --seed 42 --use_cache
+```
+3.执行推理脚本计算clipscore
+```shell
+# 等价优化
+python clip_score.py \
+       --device="npu" \
+       --image_info="clip_info_wocache.json" \
+       --model_name="ViT-H-14" \
+       --model_weights_path="./CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
+# 近似优化
+python clip_score.py \
+       --device="npu" \
+       --image_info="clip_info_wcache.json" \
+       --model_name="ViT-H-14" \
+       --model_weights_path="./CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
+```
+参数说明
+- device: 推理设备，默认为"npu"，npu不可用则使用cpu计算。
+- image_info: 上一步生成的json文件。
+- model_name: Clip模型名称。
+- model_weights_path: Clip模型权重文件路径。
+### Hpsv2精度测试
+1.准备模型与数据集
+
+hpsv2数据集为该工程目录的hpsv2_benchmark_prompts.json文件
+```shell
+# 下载权重
+wget https://huggingface.co/spaces/xswu/HPSv2/resolve/main/HPS_v2_compressed.pt --no-check-certificate
+```
+2.执行hpsv2数据集，生成图像
+```shell
+#单卡64G Flux等价优化推理
+python inference_flux.py \
+       --path ${model_path} \
+       --save_path "./hpsv2_res_wocache" \
+       --device_id 0 \
+       --device "npu" \
+       --prompt_type "hpsv2" \
+       --num_images_per_prompt 1 \
+       --info_file_save_path "./hpsv2_info_wocache.json" \
+       --width 1024 \
+       --height 1024 \
+       --infer_steps 50 \
+       --seed 42 \
+       --device_type "A2-64g"
+#单卡64G Flux近似优化推理
+python inference_flux.py \
+       --path ${model_path} \
+       --save_path "./hpsv2_res_wcache" \
+       --device_id 0 \
+       --device "npu" \
+       --prompt_type "hpsv2" \
+       --num_images_per_prompt 1 \
+       --info_file_save_path "./hpsv2_info_wcache.json" \
+       --width 1024 \
+       --height 1024 \
+       --infer_steps 50 \
+       --seed 42 \
+       --use_cache \
+       --device_type "A2-64g"
+# 双卡32G Flux等价优化推理
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_type "hpsv2" --num_images_per_prompt 1 --info_file_save_path "./hpsv2_info_wocache.json" --width 1024 --height 1024 --infer_steps 50 --seed 42
+# 双卡32G Flux近似优化推理
+ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_type "hpsv2" --num_images_per_prompt 1 --info_file_save_path "./hpsv2_info_wocache.json" --width 1024 --height 1024 --infer_steps 50 --seed 42 --use_cache
+```
+3.执行推理脚本计算hpsv2
+```shell
+python hpsv2_score.py \
+       --image_info="hpsv2_info_wocache.json" \
+       --HPSv2_checkpoint="./HPS_v2_compressed.pt" \
+       --clip_checkpoint="./CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
+```
+- image_info: 上一步生成的json文件。
+- HPSv2_checkpoint: HPSv2模型权重文件路径。
+- clip_checkpointh: Clip模型权重文件路径。
 性能参考下列数据。
 
 ### Flux.1-DEV
 
-| 硬件形态  | cpu规格 | batch size | 迭代次数 | 优化手段 | 平均耗时 | 采样器 | 备注 |
-| :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
-| Atlas 800I A2(8*64G) | 64核(arm) |  1  |  50  | with DiTCache |  20.4s   | FlowMatchEuler | 单卡运行 |
-| Atlas 800I A2(8*32G) | 64核(arm) |  1  |  50  | with DiTCache |  24.6s   | FlowMatchEuler | 双卡运行 |
+| 硬件形态  | cpu规格 | batch size | 分辨率 |迭代次数 | 优化手段 | 平均耗时 | 采样器 | 备注 |
+| :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
+| Atlas 800I A2(8*64G) | 64核(arm) |  1  | 1024*1024 |  50  | with DiTCache |  20.4s   | FlowMatchEuler | 单卡运行 |
+| Atlas 800I A2(8*32G) | 64核(arm) |  1  | 1024*1024 |  50  | with DiTCache |  24.6s   | FlowMatchEuler | 双卡运行 |

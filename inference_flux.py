@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import csv
+import json
 import time
 import torch
 import torch_npu
@@ -37,6 +39,7 @@ class PromptLoader:
     def __init__(
             self,
             prompt_file: str,
+            prompt_file_type: str,
             batch_size: int = 1,
             num_images_per_prompt: int = 1,
             max_num_prompts: int = 0
@@ -46,7 +49,14 @@ class PromptLoader:
         self.batch_size = batch_size
         self.num_images_per_prompt = num_images_per_prompt
 
-        self.load_prompts(prompt_file, max_num_prompts)
+        if prompt_file_type == 'plain':
+            self.load_prompts_plain(prompt_file, max_num_prompts)
+        elif prompt_file_type == 'parti':
+            self.load_prompts_parti(prompt_file, max_num_prompts)
+        elif prompt_file_type == 'hpsv2':
+            self.load_prompts_hpsv2(max_num_prompts)
+        else:
+            print("This operation is not supported!")
 
         self.current_id = 0
         self.inner_id = 0
@@ -87,7 +97,7 @@ class PromptLoader:
 
         return ret
     
-    def load_prompts(self, file_path: str, max_num_prompts: int):
+    def load_prompts_plain(self, file_path: str, max_num_prompts: int):
         with os.fdopen(os.open(file_path, os.O_RDONLY), "r") as f:
             for i, line in enumerate(f):
                 if max_num_prompts and i == max_num_prompts:
@@ -96,6 +106,40 @@ class PromptLoader:
                 prompt = line.strip()
                 self.prompts.append((prompt, 0))
 
+    def load_prompts_parti(self, file_path: str, max_num_prompts: int):
+        with os.fdopen(os.open(file_path, os.O_RDONLY), "r") as f:
+            # Skip the first line
+            next(f)
+            tsv_file = csv.reader(f, delimiter="\t")
+            for i, line in enumerate(tsv_file):
+                if max_num_prompts and i == max_num_prompts:
+                    break
+
+                prompt = line[0]
+                catagory = line[1]
+                if catagory not in self.catagories:
+                    self.catagories.append(catagory)
+
+                catagory_id = self.catagories.index(catagory)
+                self.prompts.append((prompt, catagory_id))
+
+    def load_prompts_hpsv2(self, max_num_prompts: int):
+        with open('hpsv2_benchmark_prompts.json', 'r') as file:
+            all_prompts = json.load(file)
+        count = 0
+        for style, prompts in all_prompts.items():
+            for prompt in prompts:
+                count += 1
+                if max_num_prompts and count >= max_num_prompts:
+                    break
+
+                if style not in self.catagories:
+                    self.catagories.append(style)
+
+                catagory_id = self.catagories.index(style)
+                self.prompts.append((prompt, catagory_id))
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="./flux", help="Path to the flux model directory")
@@ -103,6 +147,10 @@ def parse_arguments():
     parser.add_argument("--device_id", type=int, default=0, help="NPU device id")
     parser.add_argument("--device", type=str, default="npu", help="NPU")
     parser.add_argument("--prompt_path", type=str, default="./prompts.txt", help="input prompt text path")
+    parser.add_argument("--prompt_type", choices=["plain", "parti", "hpsv2"], default="plain", help="specify infer prompt type")
+    parser.add_argument("--num_images_per_prompt", type=int, default=1, help="specify image number every prompt generate")
+    parser.add_argument("--max_num_prompt", type=int, default=0, help="limit the prompt number[0 indicates no limit]")
+    parser.add_argument("--info_file_save_path", type=str, default="./image_info.json", help="path to save image info")
     parser.add_argument("--width", type=int, default=1024, help='Image size width')
     parser.add_argument("--height", type=int, default=1024, help='Image size height')
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
@@ -137,12 +185,19 @@ def infer(args):
 
     infer_num = 0
     time_consume = 0
-    prompt_loader = PromptLoader(args.prompt_path)
+    prompt_loader = PromptLoader(args.prompt_path,
+                                args.prompt_type,
+                                batch_size=1,
+                                args.num_images_per_prompt,
+                                args.max_num_prompts)
     for _, input_info in enumerate(prompt_loader):
         prompts = input_info['prompts']
         save_names = input_info['save_names']
+        catagories = input_info['catagories']
+        save_names = input_info['save_names']
+        n_prompts = input_info['n_prompts']
 
-        print(f"[{infer_num}/{len(prompt_loader)}]: {prompts}")
+        print(f"[{infer_num+n_prompts}/{len(prompt_loader)}]: {prompts}")
         infer_num += 1
         if infer_num > 3:
             start_time = time.time()
@@ -162,9 +217,22 @@ def infer(args):
         if infer_num > 3:
             end_time = time.time() - start_time
             time_consume += end_time
-        image_save_path = os.path.join(args.save_path,f"{save_names[0]}.png")
-        image.save(image_save_path)
+
+        for j in range(n_prompts):
+            image_save_path = os.path.join(args.save_path, f"{save_names[j]}.png")
+            image.save(image_save_path)
+
+            if current_prompt != prompts[j]:
+                current_prompt = prompts[j]
+                image_info.append({'images': [], 'prompt': current_prompt, 'category': catagories[j]})
+
+            image_info[-1]['images'].append(image_save_path)
     
+    if os.path.exists(args.info_file_save_path):
+        os.remove(args.info_file_save_path)
+
+    with os.fdopen(os.open(args.info_file_save_path, os.O_RDWR | os.O_CREAT, 0o640), "w") as f:
+        json.dump(image_info, f)
     image_time_count = len(prompt_loader) - 3
     print(f"flux pipeline time is:{time_consume/image_time_count}")
     return
