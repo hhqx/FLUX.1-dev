@@ -345,6 +345,8 @@ python hpsv2_score.py \
 - image_info: 上一步生成的json文件。
 - HPSv2_checkpoint: HPSv2模型权重文件路径。
 - clip_checkpointh: Clip模型权重文件路径。
+
+
 性能参考下列数据。
 
 ### Flux.1-DEV
