@@ -185,11 +185,13 @@ def infer(args):
 
     infer_num = 0
     time_consume = 0
+    current_prompt = None
+    image_info = []
     prompt_loader = PromptLoader(args.prompt_path,
                                 args.prompt_type,
-                                batch_size=1,
+                                1,
                                 args.num_images_per_prompt,
-                                args.max_num_prompts)
+                                args.max_num_prompt)
     for _, input_info in enumerate(prompt_loader):
         prompts = input_info['prompts']
         save_names = input_info['save_names']
