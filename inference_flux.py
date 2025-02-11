@@ -179,6 +179,9 @@ def infer(args):
     else:
         raise ValueError(f"Not support device type:{args.device_type}")
 
+    torch.manual_seed(args.seed)
+    torch.npu.manual_seed(args.seed)
+    torch.npu.manual_seed_all(args.seed)
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path, mode=0o640)
@@ -211,7 +214,6 @@ def infer(args):
             guidance_scale=3.5,
             num_inference_steps=args.infer_steps,
             max_sequence_length=512,
-            generator=torch.Generator().manual_seed(args.seed),
             use_cache=args.use_cache,
             cache_dict=cache_dict,
         ).images[0]
