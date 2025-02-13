@@ -74,7 +74,7 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     
-    device = torch.device('npu' if torch.npu.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model, preprocess_val = initialize_model(args.clip_checkpoint, device)
 
@@ -105,7 +105,7 @@ def main():
             # Process the prompt
             text = tokenizer([prompt]).to(device=device, non_blocking=True)
             # Calculate the HPS
-            with torch.npu.amp.autocast():
+            with torch.cuda.amp.autocast():
                 outputs = model(image, text)
                 image_features = outputs["image_features"]
                 text_features = outputs["text_features"]

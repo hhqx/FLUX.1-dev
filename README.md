@@ -228,7 +228,10 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inf
 wget https://raw.githubusercontent.com/google-research/parti/main/PartiPrompts.tsv --no-check-certificate
 
 # 下载clip模型
-GIT_LFS_SKIP_SMUDGE=1
+# 安装git-lfs
+apt install git-lfs
+git lfs install
+
 git clone https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K
 ```
 也可手动下载[clip模型](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K/blob/main/open_clip_pytorch_model.bin)权重

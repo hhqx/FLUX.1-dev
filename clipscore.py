@@ -48,7 +48,7 @@ def main():
     args = parse_arguments()
     
     if args.device is None:
-        device = torch.device('npu' if (torch.npu.is_available()) else 'cpu')
+        device = torch.device('cuda' if (torch.cuda.is_available()) else 'cpu')
     else:
         device = torch.device(args.device)
     
@@ -112,7 +112,7 @@ def parse_arguments():
         "--device",
         type=str,
         default="cpu",
-        choices=["cpu", "npu"],
+        choices=["cpu", "cuda"],
         help="device for torch.",
     )
     parser.add_argument(
