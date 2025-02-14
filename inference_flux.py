@@ -204,7 +204,7 @@ def infer(args):
         n_prompts = input_info['n_prompts']
 
         print(f"[{infer_num+n_prompts}/{len(prompt_loader)}]: {prompts}")
-        infer_num += 1
+        infer_num += args.batch_size
         if infer_num > 3:
             start_time = time.time()
 
