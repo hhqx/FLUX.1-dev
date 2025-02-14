@@ -217,7 +217,7 @@ def infer(args):
             max_sequence_length=512,
             use_cache=args.use_cache,
             cache_dict=cache_dict,
-        ).images[0]
+        )
 
         if infer_num > 3:
             end_time = time.time() - start_time
@@ -225,7 +225,7 @@ def infer(args):
 
         for j in range(n_prompts):
             image_save_path = os.path.join(args.save_path, f"{save_names[j]}.png")
-            image.save(image_save_path)
+            image[0][j].save(image_save_path)
 
             if current_prompt != prompts[j]:
                 current_prompt = prompts[j]
