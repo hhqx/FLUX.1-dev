@@ -152,7 +152,8 @@ python inference_flux.py \
        --infer_steps 50 \
        --seed 42 \
        --use_cache \
-       --device_type "A2-64g"
+       --device_type "A2-64g" \
+       --batch_size 1
 ```
 参数说明：
 - path: Flux本地模型权重路径，默认读取当前文件夹下的flux文件夹
@@ -166,6 +167,7 @@ python inference_flux.py \
 - seed: 设置随机种子，默认值为42
 - use_cache: 是否开启dit cache近似优化
 - device_type: device类型，有A2-32g-single、A2-32g-dual、A2-64g三个选项
+- batch_size: 指定prompt的batch size，默认为1，大于1时以list形式送入pipeline
 #### 3.2.2 Atlas-800I-A2-32g机器运行Flux
 - 单卡运行Flux
 ```shell
@@ -212,6 +214,7 @@ python3 tpsplit_weight.py --path ${model_path}
 ```
 3.执行命令运行Flux：
 ```shell
+export ASCEND_LAUNCH_BLOCKING = 1
 ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inference_flux.py --device_type "A2-32g-dual" --path ${model_path} --prompt_path "./prompts.txt" --width 1024 --height 1024 --infer_steps 50 --seed 42 --use_cache
 ```
 参数说明：

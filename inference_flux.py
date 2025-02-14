@@ -156,6 +156,7 @@ def parse_arguments():
     parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
     parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
     parser.add_argument("--use_cache", action="store_true", help="turn on dit cache or not")
+    parser.add_argument("--batch_size", type=int, default=1, help="prompt batch size")
     parser.add_argument("--device_type", choices=["A2-32g-single", "A2-32g-dual", "A2-64g"], default="A2-64g", help="specify device type")
     return parser.parse_args()
 
@@ -192,7 +193,7 @@ def infer(args):
     image_info = []
     prompt_loader = PromptLoader(args.prompt_path,
                                 args.prompt_type,
-                                1,
+                                args.batch_size,
                                 args.num_images_per_prompt,
                                 args.max_num_prompt)
     for _, input_info in enumerate(prompt_loader):
