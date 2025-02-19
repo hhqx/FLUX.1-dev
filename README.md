@@ -280,20 +280,20 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 torchrun --master_port=2002 --nproc_per_node=2 inf
 3.执行推理脚本计算clipscore
 ```shell
 # 等价优化
-python clip_score.py \
-       --device="npu" \
+python clipscore.py \
+       --device="cpu" \
        --image_info="clip_info_wocache.json" \
        --model_name="ViT-H-14" \
        --model_weights_path="./CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 # 近似优化
-python clip_score.py \
-       --device="npu" \
+python clipscore.py \
+       --device="cpu" \
        --image_info="clip_info_wcache.json" \
        --model_name="ViT-H-14" \
        --model_weights_path="./CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 ```
 参数说明
-- device: 推理设备，默认为"npu"，npu不可用则使用cpu计算。
+- device: 推理设备，默认使用cpu做计算。
 - image_info: 上一步生成的json文件。
 - model_name: Clip模型名称。
 - model_weights_path: Clip模型权重文件路径。
