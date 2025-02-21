@@ -147,7 +147,7 @@ class PromptLoader:
         if num_images_per_prompt <= 0:
             raise ValueError(f"Param num_images_per_prompt invalid, expected positive value, but get {num_images_per_prompt}")
         if max_num_prompt < 0:
-            raise ValueError(f"Param max_num_prompts invalid, expected greater than or equal to 0,
+            raise ValueError(f"Param max_num_prompts invalid, expected greater than or equal to 0, \
                                  but get {num_images_per_prompt}")
 
 

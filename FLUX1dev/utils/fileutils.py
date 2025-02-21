@@ -175,10 +175,10 @@ def check_prompts_valid(prompts):
         for prompt in prompts:
             if len(prompt) == 0 or len(prompt) >= MAX_PROMPT_LENGTH:
                 raise ValueError(
-                    f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), 
+                    f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), \
                         but prompts:{prompt} length is {len(prompt)}.")
     elif type(prompts) is str:
         if len(prompts) == 0 or len(prompts) >= MAX_PROMPT_LENGTH:
             raise ValueError(
-                f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), 
+                f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), \
                     but prompts:{prompts} length is {len(prompts[0])}.")
