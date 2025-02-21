@@ -22,6 +22,7 @@ import torch_npu
 import argparse
 from FLUX1dev import FluxPipeline
 from FLUX1dev import get_local_rank, get_world_size, initialize_torch_distributed
+from FLUX1dev.utils import check_prompts_valid, check_param_valid, check_dir_safety, check_file_safety
 
 from torch_npu.contrib import transfer_to_npu
 
@@ -178,7 +179,7 @@ def infer(args):
         FluxPipeline.extract_init_dict = classmethod(replace_tp_extract_init_dict)
     
     check_dir_safety(args.path)
-    pipe = FluxPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16)
+    pipe = FluxPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16, local_files_only=True)
 
     if args.device_type == "A2-32g-single":
         torch.npu.set_device(args.device_id)
