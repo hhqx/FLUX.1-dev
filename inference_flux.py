@@ -251,7 +251,6 @@ def infer(args):
 
             image_info[-1]['images'].append(image_save_path)
     
-    check_file_safety(args.info_file_save_path)
     if os.path.exists(args.info_file_save_path):
         os.remove(args.info_file_save_path)
 
