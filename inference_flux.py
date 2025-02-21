@@ -44,6 +44,7 @@ class PromptLoader:
             num_images_per_prompt: int = 1,
             max_num_prompts: int = 0
     ):
+        self.check_input_isvalid(batch_size, num_images_per_prompt, max_num_prompts)
         self.prompts = []
         self.catagories = ['Not_specified']
         self.batch_size = batch_size
@@ -139,21 +140,31 @@ class PromptLoader:
                 catagory_id = self.catagories.index(style)
                 self.prompts.append((prompt, catagory_id))
 
+    def check_input_isvalid(batch_size, num_images_per_prompt, max_num_prompts):
+        if batch_size <= 0:
+            raise ValueError(f"Param batch_size invalid, expected positive value, but get {batch_size}")
+        if num_images_per_prompt <= 0:
+            raise ValueError(f"Param num_images_per_prompt invalid, expected positive value, but get {num_images_per_prompt}")
+        if max_num_prompt < 0:
+            raise ValueError(f"Param max_num_prompts invalid, expected greater than or equal to 0,
+                                 but get {num_images_per_prompt}")
+
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="./flux", help="Path to the flux model directory")
     parser.add_argument("--save_path", type=str, default="./res", help="ouput image path")
     parser.add_argument("--device_id", type=int, default=0, help="NPU device id")
-    parser.add_argument("--device", type=str, default="npu", help="NPU")
+    parser.add_argument("--device", choices=["npu", "cpu"], default="npu", help="NPU")
     parser.add_argument("--prompt_path", type=str, default="./prompts.txt", help="input prompt text path")
     parser.add_argument("--prompt_type", choices=["plain", "parti", "hpsv2"], default="plain", help="specify infer prompt type")
     parser.add_argument("--num_images_per_prompt", type=int, default=1, help="specify image number every prompt generate")
     parser.add_argument("--max_num_prompt", type=int, default=0, help="limit the prompt number[0 indicates no limit]")
     parser.add_argument("--info_file_save_path", type=str, default="./image_info.json", help="path to save image info")
     parser.add_argument("--width", type=int, default=1024, help='Image size width')
-    parser.add_argument("--height", type=int, default=1024, help='Image size height')
-    parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps")
+    parser.add_argument("--height", type=int, default=1024, help='Image size height')  
+    parser.add_argument("--infer_steps", type=int, default=50, help="Inference steps") 
     parser.add_argument("--seed", type=int, default=42, help="A seed for all the prompts")
     parser.add_argument("--use_cache", action="store_true", help="turn on dit cache or not")
     parser.add_argument("--batch_size", type=int, default=1, help="prompt batch size")
@@ -165,20 +176,21 @@ def infer(args):
         from FLUX1dev import replace_tp_from_pretrain, replace_tp_extract_init_dict
         FluxPipeline.from_pretrained = classmethod(replace_tp_from_pretrain)
         FluxPipeline.extract_init_dict = classmethod(replace_tp_extract_init_dict)
+    
+    check_dir_safety(args.path)
     pipe = FluxPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16)
+
     if args.device_type == "A2-32g-single":
         torch.npu.set_device(args.device_id)
         pipe.enable_model_cpu_offload()
     elif args.device_type == "A2-64g":
         torch.npu.set_device(args.device_id)
         pipe.to(f"npu:{args.device_id}")
-    elif args.device_type == "A2-32g-dual":
+    else:
         local_rank = get_local_rank()
         world_size = get_world_size()
         initialize_torch_distributed(local_rank, world_size)
         pipe.to(f"npu:{local_rank}")
-    else:
-        raise ValueError(f"Not support device type:{args.device_type}")
 
     torch.manual_seed(args.seed)
     torch.npu.manual_seed(args.seed)
@@ -186,22 +198,27 @@ def infer(args):
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path, mode=0o640)
+    check_dir_safety(args.save_path)
 
     infer_num = 0
     time_consume = 0
     current_prompt = None
     image_info = []
+    check_file_safety(args.prompt_path)
     prompt_loader = PromptLoader(args.prompt_path,
                                 args.prompt_type,
                                 args.batch_size,
                                 args.num_images_per_prompt,
                                 args.max_num_prompt)
+    check_param_valid(args.height, args.width, args.infer_steps)
     for _, input_info in enumerate(prompt_loader):
         prompts = input_info['prompts']
         save_names = input_info['save_names']
         catagories = input_info['catagories']
         save_names = input_info['save_names']
         n_prompts = input_info['n_prompts']
+
+        check_prompts_valid(prompts)
 
         print(f"[{infer_num+n_prompts}/{len(prompt_loader)}]: {prompts}")
         infer_num += args.batch_size
@@ -233,6 +250,7 @@ def infer(args):
 
             image_info[-1]['images'].append(image_save_path)
     
+    check_file_safety(args.info_file_save_path)
     if os.path.exists(args.info_file_save_path):
         os.remove(args.info_file_save_path)
 
