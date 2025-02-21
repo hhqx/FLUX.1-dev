@@ -141,7 +141,7 @@ class PromptLoader:
                 catagory_id = self.catagories.index(style)
                 self.prompts.append((prompt, catagory_id))
 
-    def check_input_isvalid(batch_size, num_images_per_prompt, max_num_prompts):
+    def check_input_isvalid(self, batch_size, num_images_per_prompt, max_num_prompts):
         if batch_size <= 0:
             raise ValueError(f"Param batch_size invalid, expected positive value, but get {batch_size}")
         if num_images_per_prompt <= 0:
