@@ -71,7 +71,7 @@ class PromptLoader:
 
     def __next__(self):
         if self.current_id == len(self.prompts):
-            raise StopIteration
+            return
         
         ret = {
             'prompts': [],
