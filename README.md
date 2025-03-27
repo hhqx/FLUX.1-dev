@@ -352,6 +352,12 @@ python hpsv2_score.py \
 - HPSv2_checkpoint: HPSv2模型权重文件路径。
 - clip_checkpointh: Clip模型权重文件路径。
 
+### 优化指南
+本模型使用的优化手段如下：
+
+等价优化：FA、ROPE、RMSnorm、TP并行（32G机器可选）
+
+算法优化：FA、ROPE、RMSnorm、DiTCache、TP并行（32G机器可选）
 
 性能参考下列数据。
 
