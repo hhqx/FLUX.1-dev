@@ -69,13 +69,6 @@ tar -xzvf pytorch_v{pytorchversion}_py{pythonversion}.tar.gz
 pip install torch_npu-{pytorchversion}.xxxx.{arch}.whl
 ```
 
-### 安装mindspeed依赖
-```shell
-# 下载mindspeed源码仓：
-git clone https://gitee.com/ascend/MindSpeed.git
-# 执行如下命令进行安装：
-pip install -e MindSpeed
-```
 ## 二、下载本仓库
 
 ### 2.1 下载到本地

@@ -14,28 +14,29 @@
 
 
 from typing import Any, Dict, List, Optional, Union
+import numpy as np
 
 import torch
 import torch_npu
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-import numpy as np
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import FromOriginalModelMixin, PeftAdapterMixin
 from diffusers.models.activations import GEGLU, ApproximateGELU, SwiGLU, LinearActivation
-from ..layers import Attention, GELU
-from ..layers import FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0
-from .modeling_utils import ModelMixin
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
-from ..layers import FluxPosEmbed
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from ..utils import get_local_rank,get_world_size
+
+from .modeling_utils import ModelMixin
+from ..layers import FluxPosEmbed
+from ..utils import get_local_rank, get_world_size
+from ..layers import Attention, GELU
+from ..layers import FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -129,10 +130,10 @@ class FluxSingleTransformerBlock(nn.Module):
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
         if self.is_tp:
-            B,S,H = mlp_hidden_states.shape
-            mlp_hidden_states_full = torch.empty([get_world_size(),B, S, H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
+            B, S, H = mlp_hidden_states.shape
+            mlp_hidden_states_full = torch.empty([get_world_size(), B, S, H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
             dist.all_gather_into_tensor(mlp_hidden_states_full, mlp_hidden_states)
-            mlp_hidden_states = mlp_hidden_states_full.permute(1, 2, 0, 3).reshape([B, S, 2*H])
+            mlp_hidden_states = mlp_hidden_states_full.permute(1, 2, 0, 3).reshape([B, S, 2 * H])
 
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
@@ -143,10 +144,10 @@ class FluxSingleTransformerBlock(nn.Module):
         gate = gate.unsqueeze(1)
         hidden_states = self.proj_out(hidden_states)
         if self.is_tp:
-            B,S,H = hidden_states.shape
-            hidden_states_all = torch.empty([get_world_size(),B,S,H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
+            B, S, H = hidden_states.shape
+            hidden_states_all = torch.empty([get_world_size(), B, S, H], dtype=mlp_hidden_states.dtype, device=mlp_hidden_states.device)
             dist.all_gather_into_tensor(hidden_states_all, hidden_states)
-            hidden_states = hidden_states_all.permute(1, 2, 0, 3).reshape([B, S, 2*H])
+            hidden_states = hidden_states_all.permute(1, 2, 0, 3).reshape([B, S, 2 * H])
         hidden_states = gate * hidden_states
         hidden_states = residual + hidden_states
         if hidden_states.dtype == torch.float16:
@@ -198,7 +199,7 @@ class FluxTransformerBlock(nn.Module):
             is_tp=is_tp,
         )
         if is_tp:
-            out_bias = (get_local_rank() == 0)  #when tp, only card 0 support bias
+            out_bias = (get_local_rank() == 0)
         else:
             out_bias = True
 
@@ -220,7 +221,7 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
-        is_tp: bool=False,
+        is_tp: bool = False,
     ):
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
@@ -264,7 +265,7 @@ class FluxTransformerBlock(nn.Module):
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
-        return encoder_hidden_states, hidden_states
+        return hidden_states, encoder_hidden_states
 
 
 class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
@@ -420,26 +421,24 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        encoder_hidden_states, hidden_states = self.forward_blocks(
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            temb=temb,
-            image_rotary_emb=image_rotary_emb,
-            cache_dict=cache_dict,
-            step_idx=step_idx,
-            use_cache=use_cache,
-        )
+        for _, block in enumerate(self.transformer_blocks):
+            hidden_states, encoder_hidden_states = self.d_stream_agent.apply(
+                block.forward,
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                temb=temb,
+                image_rotary_emb=image_rotary_emb,
+            )
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        hidden_states = self.forward_single_blocks(
-            hidden_states=hidden_states,
-            temb=temb,
-            image_rotary_emb=image_rotary_emb,
-            cache_dict=cache_dict,
-            step_idx=step_idx,
-            use_cache=use_cache,
-        )
+        for _, block in enumerate(self.single_transformer_blocks):
+            hidden_states = self.s_stream_agent.apply(
+                block.forward,
+                hidden_states=hidden_states,
+                temb=temb,
+                image_rotary_emb=image_rotary_emb,
+            )
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
@@ -454,87 +453,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
-    
-    def forward_blocks_range(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, start_idx, end_idx):
-        for block_idx, block in enumerate(self.transformer_blocks[start_idx:end_idx]):
-            encoder_hidden_states,hidden_states = block(
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
-                image_rotary_emb=image_rotary_emb,
-            )
-        return hidden_states,encoder_hidden_states
-
-
-    def forward_blocks(self, hidden_states, encoder_hidden_states, temb, image_rotary_emb, cache_dict, step_idx,use_cache):
-        if(use_cache==False or cache_dict['num_cache_layer_block'] == 0):
-            cache_dict['use_cache'] = False
-        else:
-            if step_idx < cache_dict['cache_start_steps']:
-                cache_dict['use_cache'] = False
-            else:
-                cache_dict['use_cache'] = True
-        
-        if not cache_dict['use_cache']:
-            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states,encoder_hidden_states,temb,image_rotary_emb,
-                                                                             0,len(self.transformer_blocks))
-        else:
-            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states,encoder_hidden_states,temb,image_rotary_emb,
-                                                                             0, cache_dict['cache_start_block'])
-            cache_end = np.minimum(cache_dict['cache_start_block'] + cache_dict['num_cache_layer_block'], len(self.transformer_blocks))
-            hidden_states_before_cache = hidden_states.clone()
-            encoder_hidden_states_before_cache = encoder_hidden_states.clone()
-            if step_idx % cache_dict['cache_interval'] == (cache_dict['cache_start_steps'] % 2):
-                hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states, encoder_hidden_states, temb, image_rotary_emb,
-                                                                                 cache_dict['cache_start_block'], cache_end)
-                self.delta_cache = hidden_states - hidden_states_before_cache
-                if encoder_hidden_states is not None:
-                    self.delta_cache_hidden = encoder_hidden_states - encoder_hidden_states_before_cache
-            else:
-                hidden_states = hidden_states_before_cache + self.delta_cache
-                if self.delta_cache_hidden is not None:
-                    encoder_hidden_states = encoder_hidden_states_before_cache + self.delta_cache_hidden
-
-            hidden_states, encoder_hidden_states = self.forward_blocks_range(hidden_states, encoder_hidden_states,temb,image_rotary_emb,
-                                                                             cache_end,len(self.transformer_blocks))
-        return encoder_hidden_states, hidden_states
-    
-    def forward_single_blocks_range(self, hidden_states, temb, image_rotary_emb, start_idx, end_idx):
-        for block_idx, block in enumerate(self.single_transformer_blocks[start_idx:end_idx]):
-            hidden_states = block(
-                hidden_states=hidden_states,
-                temb=temb,
-                image_rotary_emb=image_rotary_emb,
-            )
-        return hidden_states
-
-    def forward_single_blocks(self, hidden_states, temb, image_rotary_emb, cache_dict, step_idx,use_cache):
-        if(use_cache==False or cache_dict['num_cache_layer_single_block'] == 0):
-            cache_dict['use_cache'] = False
-        else:
-            if step_idx < cache_dict['cache_start_steps']:
-                cache_dict['use_cache'] = False
-            else:
-                cache_dict['use_cache'] = True
-        
-        if not cache_dict['use_cache']:
-            hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotary_emb,
-                                                       0,len(self.single_transformer_blocks))
-        else:
-            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotary_emb,
-                                                        0, cache_dict['cache_start_single_block'])
-            cache_end = np.minimum(cache_dict['cache_start_single_block']+cache_dict['num_cache_layer_single_block'],len(self.single_transformer_blocks))
-            hidden_states_before_cache = hidden_states.clone()
-            if step_idx % cache_dict['cache_interval'] == (cache_dict['cache_start_steps'] % 2):
-                hidden_states = self.forward_single_blocks_range(hidden_states,temb,image_rotary_emb,
-                                                                 cache_dict['cache_start_single_block'],cache_end)
-                self.delta_cache_block2 = hidden_states - hidden_states_before_cache
-            else:
-                hidden_states = hidden_states_before_cache + self.delta_cache_block2
-
-            hidden_states = self.forward_single_blocks_range(hidden_states, temb, image_rotary_emb,
-                                                             cache_end, len(self.single_transformer_blocks))
-        return hidden_states
 
 
 class FeedForward(nn.Module):

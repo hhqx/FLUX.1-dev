@@ -14,17 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import argparse
 import csv
 import json
 import time
+
 import torch
 import torch_npu
-import argparse
+
+from torch_npu.contrib import transfer_to_npu
+
+from mindiesd import CacheAgent, CacheConfig
 from FLUX1dev import FluxPipeline
 from FLUX1dev import get_local_rank, get_world_size, initialize_torch_distributed
 from FLUX1dev.utils import check_prompts_valid, check_param_valid, check_dir_safety, check_file_safety
-
-from torch_npu.contrib import transfer_to_npu
 
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
@@ -35,6 +38,7 @@ cache_dict['cache_start_single_block'] = 1
 cache_dict['num_cache_layer_single_block'] = 23
 cache_dict['cache_start_steps'] = 18
 cache_dict['cache_interval'] = 2
+
 
 class PromptLoader:
     def __init__(
@@ -71,7 +75,7 @@ class PromptLoader:
 
     def __next__(self):
         if self.current_id == len(self.prompts):
-            return
+            raise StopIteration
         
         ret = {
             'prompts': [],
@@ -151,7 +155,6 @@ class PromptLoader:
                                  but get {max_num_prompts}")
 
 
-
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="./flux", help="Path to the flux model directory")
@@ -171,6 +174,7 @@ def parse_arguments():
     parser.add_argument("--batch_size", type=int, default=1, help="prompt batch size")
     parser.add_argument("--device_type", choices=["A2-32g-single", "A2-32g-dual", "A2-64g"], default="A2-64g", help="specify device type")
     return parser.parse_args()
+
 
 def infer(args):
     if args.device_type == "A2-32g-dual":
@@ -192,6 +196,45 @@ def infer(args):
         world_size = get_world_size()
         initialize_torch_distributed(local_rank, world_size)
         pipe.to(f"npu:{local_rank}")
+
+    if args.use_cache:
+        d_stream_config = CacheConfig(
+            method="dit_block_cache",
+            blocks_count=19,
+            steps_count=args.infer_steps,
+            step_start=18,
+            step_interval=2,
+            block_start=5,
+            block_end=13,
+        )
+        d_stream_agent = CacheAgent(d_stream_config)
+        pipe.transformer.d_stream_agent = d_stream_agent
+        s_stream_config = CacheConfig(
+            method="dit_block_cache",
+            blocks_count=38,
+            steps_count=args.infer_steps,
+            step_start=18,
+            step_interval=2,
+            block_start=1,
+            block_end=23,
+        )
+        s_stream_agent = CacheAgent(s_stream_config)
+        pipe.transformer.s_stream_agent = s_stream_agent
+    else:
+        d_stream_config = CacheConfig(
+            method="dit_block_cache",
+            blocks_count=19,
+            steps_count=args.infer_steps,
+        )
+        d_stream_agent = CacheAgent(d_stream_config)
+        pipe.transformer.d_stream_agent = d_stream_agent
+        s_stream_config = CacheConfig(
+            method="dit_block_cache",
+            blocks_count=38,
+            steps_count=args.infer_steps,
+        )
+        s_stream_agent = CacheAgent(s_stream_config)
+        pipe.transformer.s_stream_agent = s_stream_agent
 
     torch.manual_seed(args.seed)
     torch.npu.manual_seed(args.seed)

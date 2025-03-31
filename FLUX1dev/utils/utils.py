@@ -1,8 +1,9 @@
 import os
-import importlib
-import torch
 from typing import Optional, Union
-from diffusers.utils import logging,is_accelerate_available,is_torch_version
+import importlib
+
+import torch
+from diffusers.utils import logging, is_accelerate_available, is_torch_version
 from diffusers.pipelines.pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
     CONNECTED_PIPES_KEYS,
@@ -59,6 +60,7 @@ class FakeGroup:
     def rank(self):
         return self._rank
 
+
 def initialize_torch_distributed(rank, world_size):
     if not torch.npu.is_available():
         raise NotImplementedError("NPU is not available, please check device and torch_npu library")
@@ -88,11 +90,14 @@ def initialize_torch_distributed(rank, world_size):
     
     return torch.distributed.group.WORLD, device
 
+
 def get_local_rank():
     return int(os.environ["LOCAL_RANK"])
 
+
 def get_world_size():
     return int(os.environ["WORLD_SIZE"])
+
 
 def replace_tp_from_pretrain(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
     kwargs_copied = kwargs.copy()
@@ -431,6 +436,7 @@ def replace_tp_from_pretrain(cls, pretrained_model_name_or_path: Optional[Union[
     if device_map is not None:
         setattr(model, "hf_device_map", final_device_map)
     return model
+
 
 def replace_tp_extract_init_dict(cls, config_dict, **kwargs):
     # Skip keys that were not present in the original config, so default __init__ values were used

@@ -169,15 +169,14 @@ def check_param_valid(height, width, infer_step):
         raise ValueError(f"Param infer_step invalid, expected positive value, but get {infer_step}")
 
 
-
 def check_prompts_valid(prompts):
-    if type(prompts) is list:
+    if isinstance(prompts, list):
         for prompt in prompts:
             if len(prompt) == 0 or len(prompt) >= MAX_PROMPT_LENGTH:
                 raise ValueError(
                     f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), \
                         but prompts:{prompt} length is {len(prompt)}.")
-    elif type(prompts) is str:
+    elif isinstance(prompts, str):
         if len(prompts) == 0 or len(prompts) >= MAX_PROMPT_LENGTH:
             raise ValueError(
                 f"The length of the prompt should be (0, {MAX_PROMPT_LENGTH}), \

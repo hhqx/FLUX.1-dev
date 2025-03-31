@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-import torch_npu
-import numpy as np
 from typing import Union, List
+import numpy as np
+
+import torch
 from torch import nn
+import torch_npu
+
 
 class FluxPosEmbed(nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
@@ -47,6 +49,7 @@ class FluxPosEmbed(nn.Module):
         freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
         return freqs_cos, freqs_sin
 
+
 def get_1d_rotary_pos_embed(
     dim: int,
     pos: Union[np.ndarray, int],
@@ -55,7 +58,7 @@ def get_1d_rotary_pos_embed(
     linear_factor=1.0,
     ntk_factor=1.0,
     repeat_interleave_real=True,
-    freqs_dtype=torch.float32,  #  torch.float32, torch.float64 (flux)
+    freqs_dtype=torch.float32,
 ):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.

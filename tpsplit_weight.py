@@ -14,16 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import shutil
-import torch
 import argparse
+import shutil
+
+import torch
 from safetensors.torch import load_file, save_file
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="./flux", help="Path to the flux model directory")
     return parser.parse_args()
-    #TODO: support multicard > 2 split
+
 
 def split_weight(file_path, transformer_path_0, transformer_path_1):
     init_dict = load_file(file_path)
@@ -32,56 +34,53 @@ def split_weight(file_path, transformer_path_0, transformer_path_1):
     dict_rank0 = {}
     dict_rank1 = {}
     for key in init_dict:
-        #for MLP module:
         if 'ff' in key:
-            if 'net.0' in key and 'weight' in key:  #col split
+            if 'net.0' in key and 'weight' in key:
                 shape = init_dict[key].shape[0]
-                dict_rank0[key] = init_dict[key][:shape//2,].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:,].contiguous()
-            elif 'net.0' in key and 'bias' in key:  #col split
+                dict_rank0[key] = init_dict[key][:shape // 2, ].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:, ].contiguous()
+            elif 'net.0' in key and 'bias' in key:
                 shape = init_dict[key].shape[0]
-                dict_rank0[key] = init_dict[key][:shape//2].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:].contiguous()
-            elif 'net.2' in key and 'weight' in key:    #row split
+                dict_rank0[key] = init_dict[key][:shape // 2].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:].contiguous()
+            elif 'net.2' in key and 'weight' in key:
                 shape = init_dict[key].shape[1]
-                dict_rank0[key] = init_dict[key][..., :shape//2].contiguous()
-                dict_rank1[key] = init_dict[key][..., shape//2:].contiguous()
-            elif 'net.2' in key and 'bias' in key:    #only card 0 support
+                dict_rank0[key] = init_dict[key][..., :shape // 2].contiguous()
+                dict_rank1[key] = init_dict[key][..., shape // 2:].contiguous()
+            elif 'net.2' in key and 'bias' in key:
                 dict_rank0[key] = init_dict[key].contiguous()
             else:
                 dict_rank0[key] = init_dict[key].contiguous()
                 dict_rank1[key] = init_dict[key].contiguous()
-        #for FA module:
         elif 'attn' in key:
             if 'norm' in key:
                 dict_rank0[key] = init_dict[key].contiguous()
                 dict_rank1[key] = init_dict[key].contiguous()
             elif 'out' in key and 'weight' in key:
                 shape = init_dict[key].shape[1]
-                dict_rank0[key] = init_dict[key][..., :shape//2].contiguous()
-                dict_rank1[key] = init_dict[key][..., shape//2:].contiguous()
+                dict_rank0[key] = init_dict[key][..., :shape // 2].contiguous()
+                dict_rank1[key] = init_dict[key][..., shape // 2:].contiguous()
             elif 'out' in key and 'bias' in key:
                 dict_rank0[key] = init_dict[key].contiguous()
-            elif 'weight' in key:           #qkv linear
+            elif 'weight' in key:
                 shape = init_dict[key].shape[0]
-                dict_rank0[key] = init_dict[key][:shape//2,].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:,].contiguous()
+                dict_rank0[key] = init_dict[key][:shape // 2, ].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:, ].contiguous()
             elif 'bias' in key:
                 shape = init_dict[key].shape[0]
-                dict_rank0[key] = init_dict[key][:shape//2].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:].contiguous()
+                dict_rank0[key] = init_dict[key][:shape // 2].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:].contiguous()
             else:
                 dict_rank0[key] = init_dict[key].contiguous()
                 dict_rank1[key] = init_dict[key].contiguous()
-        #for linear before and after single_block fa:
         elif 'single_transformer_blocks' in key and 'proj' in key:
             shape = init_dict[key].shape[0]
             if 'weight' in key:
-                dict_rank0[key] = init_dict[key][:shape//2,].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:,].contiguous()
+                dict_rank0[key] = init_dict[key][:shape // 2, ].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:, ].contiguous()
             elif 'bias' in key:
-                dict_rank0[key] = init_dict[key][:shape//2].contiguous()
-                dict_rank1[key] = init_dict[key][shape//2:].contiguous()
+                dict_rank0[key] = init_dict[key][:shape // 2].contiguous()
+                dict_rank1[key] = init_dict[key][shape // 2:].contiguous()
         else:
             dict_rank0[key] = init_dict[key].contiguous()
             dict_rank1[key] = init_dict[key].contiguous()

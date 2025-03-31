@@ -23,39 +23,28 @@ from torch import nn
 from diffusers.models.attention_processor import AttnProcessor, SpatialNorm, AttnProcessor2_0
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.utils import logging
-from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
-from ..utils import get_local_rank,get_world_size
+from mindiesd import attention_forward
+from mindiesd import rotary_position_embedding
+from ..utils import get_local_rank, get_world_size
 
 logger = logging.get_logger(__name__)
 
+
 def apply_rotary_emb_mindspeed(x, freqs_cis):
     cos, sin = freqs_cis
-    cos = cos[None, None]
-    sin = sin[None, None]
     cos, sin = cos.to(x.device), sin.to(x.device)
 
-    return npu_rotary_position_embedding(x, cos, sin, 1)
+    return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
+
 
 def apply_fa(query, key, value, attention_mask):
-    if attention_mask is not None:
-        attention_mask = ~attention_mask
-        attention_mask = attention_mask.to(torch.bool)
     batch_size = query.shape[0]
-    heads = query.shape[1]
+    heads = query.shape[-2]
     head_dim = query.shape[-1]
-    actseqlen = query.shape[-2]
-    actseqlenkv = key.shape[-2]
     
-    hidden_states = torch_npu.npu_fusion_attention(query, key, value,
-        input_layout='BNSD',
-        scale=head_dim**-0.5,
-        pre_tockens=65535,
-        next_tockens=65535,
-        head_num=heads)[0]
-    return hidden_states.transpose(1, 2).reshape(batch_size, -1, head_dim*heads)
+    hidden_states = attention_forward(query, key, value, attn_mask=attention_mask)
+    return hidden_states.reshape(batch_size, -1, head_dim * heads)
 
-def rms_norm_npu(hidden_states, weight, eps):
-    return torch_npu.npu_rms_norm(hidden_states, weight, eps)[0]
 
 
 @maybe_allow_in_graph
@@ -97,7 +86,8 @@ class Attention(nn.Module):
         super().__init__()
 
         # To prevent circular import.
-        from diffusers.models.normalization import FP32LayerNorm, LpNorm, RMSNorm
+        from diffusers.models.normalization import FP32LayerNorm, LpNorm
+        from mindiesd import RMSNorm
 
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.inner_kv_dim = self.inner_dim if kv_heads is None else dim_head * kv_heads
@@ -367,20 +357,20 @@ class FluxSingleAttnProcessor2_0:
 
         inner_dim = key.shape[-1]
         if attn.is_tp:
-            attn_heads = attn.heads // attn.world_size        #TODO: multicard > 2 case
+            attn_heads = attn.heads // attn.world_size
         else:
             attn_heads = attn.heads
         head_dim = inner_dim // attn_heads
 
-        query = query.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn_heads, head_dim)
 
-        key = key.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn_heads, head_dim)
+        value = value.view(batch_size, -1, attn_heads, head_dim)
 
         if attn.norm_q is not None:
-            query = rms_norm_npu(query, attn.norm_q.weight, attn.norm_q.eps)
+            query = attn.norm_q(query)
         if attn.norm_k is not None:
-            key = rms_norm_npu(key, attn.norm_k.weight, attn.norm_k.eps)
+            key = attn.norm_k(key)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
@@ -388,14 +378,13 @@ class FluxSingleAttnProcessor2_0:
             key = apply_rotary_emb_mindspeed(key, image_rotary_emb)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = apply_fa(query,key,value,attention_mask)
+        hidden_states = apply_fa(query, key, value, attention_mask)
         hidden_states = hidden_states.to(query.dtype)
         B, S, H = hidden_states.shape
         if attn.is_tp:
-            hidden_states_full = torch.empty([attn.world_size,B, S, H], dtype=hidden_states.dtype, device=hidden_states.device)
+            hidden_states_full = torch.empty([attn.world_size, B, S, H], dtype=hidden_states.dtype, device=hidden_states.device)
             dist.all_gather_into_tensor(hidden_states_full, hidden_states)
-            hidden_states = hidden_states_full.permute(1, 2, 0, 3).reshape([B, S, 2*H])
+            hidden_states = hidden_states_full.permute(1, 2, 0, 3).reshape([B, S, 2 * H])
 
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
@@ -436,19 +425,19 @@ class FluxAttnProcessor2_0:
 
         inner_dim = key.shape[-1]
         if attn.is_tp:
-            attn_heads = attn.heads // attn.world_size        #TODO: multicard > 2 case
+            attn_heads = attn.heads // attn.world_size
         else:
             attn_heads = attn.heads
         head_dim = inner_dim // attn_heads
 
-        query = query.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn_heads, head_dim)
+        key = key.view(batch_size, -1, attn_heads, head_dim)
+        value = value.view(batch_size, -1, attn_heads, head_dim)
 
         if attn.norm_q is not None:
-            query = rms_norm_npu(query, attn.norm_q.weight, attn.norm_q.eps)
+            query = attn.norm_q(query)
         if attn.norm_k is not None:
-            key = rms_norm_npu(key, attn.norm_k.weight, attn.norm_k.eps)
+            key = attn.norm_k(key)
 
         # `context` projections.
         encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
@@ -457,30 +446,30 @@ class FluxAttnProcessor2_0:
 
         encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
             batch_size, -1, attn_heads, head_dim
-        ).transpose(1, 2)
+        )
         encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
             batch_size, -1, attn_heads, head_dim
-        ).transpose(1, 2)
+        )
         encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
             batch_size, -1, attn_heads, head_dim
-        ).transpose(1, 2)
+        )
 
         if attn.norm_added_q is not None:
-            encoder_hidden_states_query_proj = rms_norm_npu(encoder_hidden_states_query_proj, attn.norm_added_q.weight, attn.norm_added_q.eps)
+            encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
         if attn.norm_added_k is not None:
-            encoder_hidden_states_key_proj = rms_norm_npu(encoder_hidden_states_key_proj, attn.norm_added_k.weight, attn.norm_added_k.eps)
+            encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
         # attention
-        query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-        key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-        value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+        query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
+        key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+        value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
         if image_rotary_emb is not None:
             query = apply_rotary_emb_mindspeed(query, image_rotary_emb)
             key = apply_rotary_emb_mindspeed(key, image_rotary_emb)
 
         
-        hidden_states = apply_fa(query,key,value,attention_mask)
+        hidden_states = apply_fa(query, key, value, attention_mask)
         hidden_states = hidden_states.to(query.dtype)
 
         encoder_hidden_states, hidden_states = (
