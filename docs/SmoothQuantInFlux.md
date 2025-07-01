@@ -1,4 +1,6 @@
 ### SmoothQuant尺度融合策略在高效Transformer量化中的应用
+- 仓库README链接：[README.md](https://github.com/hhqx/FLUX.1-dev/blob/main/README.md)
+- 本文件 md 源码链接：[SmoothQuantInFlux.md](https://github.com/hhqx/FLUX.1-dev/blob/main/docs/SmoothQuantInFlux.md)
 
 ---
 ### 快速开始

@@ -11,13 +11,13 @@
 本仓主要是在原仓的基础上，增加了SmoothQuant方案的设计与验证。
 本仓特性 | 说明
 --- | ---
-[SmoothQuant方案设计与验证](docs/SmoothQuantInFlux.html) | 聚焦SmoothQuant量化在多模态AdaNorm场景下的应用，对于多模态中AdaNorm-Linear子图的scale融合方案设计与验证，并提供了验证流程图和demo代码。
+[SmoothQuant方案设计与验证](https://hhqx.github.io/FLUX.1-dev/docs/SmoothQuantInFlux.html) | 聚焦SmoothQuant量化在多模态AdaNorm场景下的应用，对于多模态中AdaNorm-Linear子图的scale融合方案设计与验证，并提供了验证流程图和demo代码。
 
 
 ### SmoothQuant方案的设计与验证
 
 详情参考：
-- [SmoothQuant验证方案](docs/test_anti_smooth/SmoothQuantInFlux.html)
+- [SmoothQuant验证方案](docs/SmoothQuantInFlux.md)
 - [SmoothQuant验证demo代码](tests/test_anti_smooth/test_flux_double_anti.py)
 
 - 验证流程图：
