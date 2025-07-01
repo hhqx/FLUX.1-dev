@@ -1,5 +1,9 @@
 from setuptools import setup, find_packages
 
+def read_requirements(filename='requirements.txt'):
+    with open(filename) as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
 setup(
     name="FLUX1dev",
     version="0.1.0",
@@ -7,10 +11,6 @@ setup(
     author="HQX",
     author_email="hqx@example.com",
     packages=find_packages(),
-    install_requires=[
-        "torch>=2.0.0",
-        "diffusers>=0.18.0",
-        "numpy<2.0",
-    ],
+    install_requires=read_requirements(),
     python_requires=">=3.8",
 )

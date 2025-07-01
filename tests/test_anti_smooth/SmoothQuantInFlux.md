@@ -5,7 +5,7 @@
 
 #### 算法实现与验证demo
 
-详情参考 [test_flux_double_anti.py](test_flux_double_anti.py)
+代码详情参考 [test_flux_double_anti.py](test_flux_double_anti.py)
 
 ```mermaid
 graph TD
@@ -44,10 +44,10 @@ $$
 
 ##### 运行验证代码：
 ```shell
-git clone <This repo>
+# git clone <This repo>
+git clone git@github.com:hhqx/FLUX.1-dev.git
 
-cd <This repo>
-
+cd FLUX.1-dev
 pip install -e .
 
 python -m tests.test_anti_smooth.test_flux_double_anti
