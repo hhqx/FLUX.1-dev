@@ -15,7 +15,7 @@ from typing import Optional
 import inspect
 
 import torch
-import torch_npu
+# import torch_npu
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch import nn
@@ -23,12 +23,41 @@ from torch import nn
 from diffusers.models.attention_processor import AttnProcessor, SpatialNorm, AttnProcessor2_0
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.utils import logging
-from mindiesd import attention_forward
-from mindiesd import rotary_position_embedding
+# from mindiesd import attention_forward
+# from mindiesd import rotary_position_embedding
 from ..utils import get_local_rank, get_world_size
 
 logger = logging.get_logger(__name__)
 
+def rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=False):
+    return x
+
+def attention_forward(query, key, value, attn_mask=None):
+    """
+    Apply scaled dot-product attention with proper shape handling.
+    
+    Args:
+        query: tensor of shape (batch, seq_len, num_heads, head_dim)
+        key: tensor of shape (batch, seq_len, num_heads, head_dim)
+        value: tensor of shape (batch, seq_len, num_heads, head_dim)
+        attn_mask: optional attention mask
+        
+    Returns:
+        Output tensor after applying attention
+    """
+    # Ensure inputs have the right shape for scaled_dot_product_attention
+    # F.scaled_dot_product_attention expects (batch, heads, seq_len, head_dim)
+    query = query.transpose(1, 2)
+    key = key.transpose(1, 2)
+    value = value.transpose(1, 2)
+    
+    # Apply scaled dot product attention
+    attention_output = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask)
+    
+    # Return to original format (batch, seq_len, heads, head_dim)
+    attention_output = attention_output.transpose(1, 2)
+    
+    return attention_output
 
 def apply_rotary_emb_mindspeed(x, freqs_cis):
     cos, sin = freqs_cis
@@ -38,6 +67,7 @@ def apply_rotary_emb_mindspeed(x, freqs_cis):
 
 
 def apply_fa(query, key, value, attention_mask):
+    # query: (batch_size, seq_len, heads, head_dim)
     batch_size = query.shape[0]
     heads = query.shape[-2]
     head_dim = query.shape[-1]
@@ -87,7 +117,8 @@ class Attention(nn.Module):
 
         # To prevent circular import.
         from diffusers.models.normalization import FP32LayerNorm, LpNorm
-        from mindiesd import RMSNorm
+        # from mindiesd import RMSNorm
+        from diffusers.models.normalization import RMSNorm
 
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.inner_kv_dim = self.inner_dim if kv_heads is None else dim_head * kv_heads

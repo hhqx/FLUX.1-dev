@@ -17,7 +17,7 @@ import numpy as np
 
 import torch
 from torch import nn
-import torch_npu
+# import torch_npu
 
 
 class FluxPosEmbed(nn.Module):

@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 
 import torch
-import torch_npu
+# import torch_npu
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
