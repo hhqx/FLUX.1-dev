@@ -7,7 +7,7 @@
 
 #### 算法实现与验证demo
 
-代码详情参考 [test_flux_double_anti.py](test_flux_double_anti.py)
+代码详情参考 [test_flux_double_anti.py](../tests/test_anti_smooth/test_flux_double_anti.py)
 
 ```mermaid
 graph TD
@@ -45,6 +45,7 @@ $$
 要求$$\delta_y < 10^{-5}$$以保证数值等价性。
 
 ##### 运行验证代码：
+- install
 ```shell
 # git clone <This repo>
 git clone git@github.com:hhqx/FLUX.1-dev.git
@@ -52,6 +53,7 @@ git clone git@github.com:hhqx/FLUX.1-dev.git
 cd FLUX.1-dev
 pip install -e .
 
+# 运行验证代码
 python -m tests.test_anti_smooth.test_flux_double_anti
 ```
 

@@ -9,3 +9,5 @@ Jinja2
 peft==0.11.1
 
 numpy<2.0
+
+py3_tools_hqx==1.1.1

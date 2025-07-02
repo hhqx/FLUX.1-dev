@@ -10,6 +10,33 @@ from diffusers.models.normalization import AdaLayerNormContinuous, AdaLayerNormZ
 import torch
 import torch.nn as nn
 from typing import List, Dict, Any, Optional, Tuple
+import argparse
+import logging
+import sys
+import os
+import time
+from enum import Enum
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Define smoothing operation types for clarity
+class SmoothingType(Enum):
+    QKV = "qkv"
+    MLP_UP = "mlp_up"
+    MLP_DOWN = "mlp_down"
+    ATT_O = "att_o"
+    ALL = "all"
+    
+    def __str__(self):
+        return self.value
 
 class FluxTransformerBlock_anti(FluxTransformerBlock):
     """
@@ -19,8 +46,9 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
     that modify internal parameters while preserving the model's output behavior.
     """
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, verbose=True, **kwargs):
         super().__init__(*args, **kwargs)
+        self.verbose = verbose
         
     def apply_smoothing_qkv(self, qkv: List[nn.Linear], ada_norm: AdaLayerNormZero):
         """
@@ -42,6 +70,10 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         device = qkv[0].weight.device
         smooth_scale = 2 + torch.randn((dim,)).abs().to(device)
         
+        if self.verbose:
+            logger.info(f"QKV Smoothing - Dimension: {dim}")
+            logger.info(f"QKV Smoothing - Scale range: min={smooth_scale.min().item():.4f}, max={smooth_scale.max().item():.4f}")
+        
         # Scale down normalization weights - shift component
         norm1 = ada_norm
         norm1.linear.weight.data[:dim].div_(smooth_scale.view(-1, 1))
@@ -52,7 +84,10 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         norm1.linear.bias.data[dim:2*dim] = (norm1.linear.bias.data[dim:2*dim] + 1) / smooth_scale.view(-1) - 1
         
         # Scale up Q, K, V projections
-        for linear in qkv:
+        for i, linear in enumerate(qkv):
+            linear_type = ["Query", "Key", "Value"][i]
+            if self.verbose:
+                logger.info(f"Scaling up {linear_type} projection weights ({linear.weight.shape})")
             linear.weight.data.mul_(smooth_scale.view(1, -1))
     
     def apply_smoothing_mlp_up(self, up: List[nn.Linear], ada_norm: AdaLayerNormZero):
@@ -75,6 +110,10 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         device = up[0].weight.device
         smooth_scale = 2 + torch.randn((dim,)).abs().to(device)
         
+        if self.verbose:
+            logger.info(f"MLP UP Smoothing - Dimension: {dim}")
+            logger.info(f"MLP UP Smoothing - Scale range: min={smooth_scale.min().item():.4f}, max={smooth_scale.max().item():.4f}")
+        
         # Scale down normalization weights for MLP - shift component
         norm1 = ada_norm
         norm1.linear.weight.data[3*dim:4*dim].div_(smooth_scale.view(-1, 1))
@@ -85,7 +124,9 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         norm1.linear.bias.data[4*dim:5*dim] = (norm1.linear.bias.data[4*dim:5*dim] + 1) / smooth_scale.view(-1) - 1
         
         # Scale up MLP up projections
-        for linear in up:
+        for i, linear in enumerate(up):
+            if self.verbose:
+                logger.info(f"Scaling up MLP UP projection {i+1}/{len(up)} weights ({linear.weight.shape})")
             linear.weight.data.mul_(smooth_scale.view(1, -1))
     
     def apply_smoothing_mlp_down(self, down: nn.Linear, up: nn.Linear):
@@ -106,12 +147,20 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         device = down.weight.device
         smooth_scale = 2 + torch.randn((dim,)).abs().to(device)
         
+        if self.verbose:
+            logger.info(f"⚠️ MLP DOWN Smoothing (may alter outputs) - Dimension: {dim}")
+            logger.info(f"⚠️ MLP DOWN Smoothing - Scale range: min={smooth_scale.min().item():.4f}, max={smooth_scale.max().item():.4f}")
+        
         # Scale down MLP up projection
         pre_layer = up
+        if self.verbose:
+            logger.info(f"Scaling down MLP UP projection weights ({pre_layer.weight.shape})")
         pre_layer.weight.data.div_(smooth_scale.view(-1, 1))
         pre_layer.bias.data.div_(smooth_scale.view(-1))
 
         # Scale up MLP down projections
+        if self.verbose:
+            logger.info(f"Scaling up MLP DOWN projection weights ({down.weight.shape})")
         down.weight.data.mul_(smooth_scale.view(1, -1))
     
     def apply_smoothing_att_o(self, att_v: nn.Linear, att_o: nn.Linear, smooth_scale: torch.Tensor):
@@ -132,9 +181,13 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         assert smooth_scale.ndim == 1, "The smooth scale should be a 1D tensor."
         
         # Scale up output projection (input dimension)
+        if self.verbose:
+            logger.info(f"Scaling up attention output projection weights ({att_o.weight.shape})")
         att_o.weight.data.mul_(smooth_scale.view(1, -1))
         
         # Scale down value projection (output dimension)
+        if self.verbose:
+            logger.info(f"Scaling down value projection weights ({att_v.weight.shape})")
         att_v.weight.data.div_(smooth_scale.view(-1, 1))
         att_v.bias.data.div_(smooth_scale.view(-1))
         
@@ -142,25 +195,49 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         """
         Apply anti-smoothing to query, key, value projections in both main and context paths.
         """
+        if self.verbose:
+            logger.info("=" * 50)
+            logger.info("🔄 Starting QKV smoothing process...")
+            
         # Apply smoothing to main path Q, K, V projections
+        if self.verbose:
+            logger.info("📌 Applying QKV smoothing to main attention path")
         qkv = [self.attn.to_q, self.attn.to_k, self.attn.to_v]
         self.apply_smoothing_qkv(qkv, self.norm1)
         
         # Apply smoothing to context path Q, K, V projections
+        if self.verbose:
+            logger.info("📌 Applying QKV smoothing to context attention path")
         qkv_context = [self.attn.add_q_proj, self.attn.add_k_proj, self.attn.add_v_proj]
         self.apply_smoothing_qkv(qkv_context, self.norm1_context)
+        
+        if self.verbose:
+            logger.info("✅ QKV smoothing completed successfully")
+            logger.info("=" * 50)
         
     def do_smooth_mlp_up(self):
         """
         Apply anti-smoothing to MLP up projections in both main and context paths.
         """
+        if self.verbose:
+            logger.info("=" * 50)
+            logger.info("🔄 Starting MLP UP smoothing process...")
+            
         # Apply smoothing to main path MLP up projection
+        if self.verbose:
+            logger.info("📌 Applying MLP UP smoothing to main path")
         mlp_up = [self.ff.net[0].proj]
         self.apply_smoothing_mlp_up(mlp_up, self.norm1)
         
         # Apply smoothing to context path MLP up projection
+        if self.verbose:
+            logger.info("📌 Applying MLP UP smoothing to context path")
         mlp_up_context = [self.ff_context.net[0].proj]
         self.apply_smoothing_mlp_up(mlp_up_context, self.norm1_context)
+        
+        if self.verbose:
+            logger.info("✅ MLP UP smoothing completed successfully")
+            logger.info("=" * 50)
     
     def do_smooth_mlp_down(self):
         """ 
@@ -169,17 +246,29 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         Warning: This will change the output of the model and is not guaranteed
         to maintain exact equivalence.
         """
+        if self.verbose:
+            logger.info("=" * 50)
+            logger.info("⚠️ Starting MLP DOWN smoothing process (WARNING: may alter outputs)...")
+            
         # Apply smoothing to main path MLP down projection
+        if self.verbose:
+            logger.info("📌 Applying MLP DOWN smoothing to main path")
         self.apply_smoothing_mlp_down(
             down=self.ff.net[2],
             up=self.ff.net[0].proj,
         )
         
         # Apply smoothing to context path MLP down projection
+        if self.verbose:
+            logger.info("📌 Applying MLP DOWN smoothing to context path")
         self.apply_smoothing_mlp_down(
             down=self.ff_context.net[2],
             up=self.ff_context.net[0].proj,
         )
+        
+        if self.verbose:
+            logger.info("⚠️ MLP DOWN smoothing completed (outputs may have changed)")
+            logger.info("=" * 50)
     
     def do_smooth_att_o(self, share_scale: bool = True):
         """
@@ -189,6 +278,10 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
             share_scale: If True, use the same scaling factors for both paths.
                          If False, generate different scaling factors (may change outputs).
         """
+        if self.verbose:
+            logger.info("=" * 50)
+            logger.info(f"🔄 Starting Attention Output smoothing process (share_scale={share_scale})...")
+            
         # Generate smoothing scale with fixed seed for reproducibility
         torch.manual_seed(42)
         dim = self.attn.to_out[0].weight.shape[1]
@@ -198,14 +291,33 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         scale1 = 2 + torch.randn((dim,)).abs().to(device)
         if share_scale:
             scale2 = scale1
+            if self.verbose:
+                logger.info("📊 Using shared scaling factors for both paths")
         else:
             scale2 = 2 + torch.randn((dim,)).abs().to(device)
+            if self.verbose:
+                logger.info("⚠️ Using different scaling factors (may alter outputs)")
         
-        print(f"scale1: {scale1}, scale2: {scale2}")
+        if self.verbose:
+            logger.info(f"📊 Scale statistics for main path: min={scale1.min().item():.4f}, max={scale1.max().item():.4f}")
+            if not share_scale:
+                logger.info(f"📊 Scale statistics for context path: min={scale2.min().item():.4f}, max={scale2.max().item():.4f}")
         
         # Apply smoothing to main and context attention output projections
+        if self.verbose:
+            logger.info("📌 Applying Attention Output smoothing to main path")
         self.apply_smoothing_att_o(self.attn.to_v, self.attn.to_out[0], scale1)
+        
+        if self.verbose:
+            logger.info("📌 Applying Attention Output smoothing to context path")
         self.apply_smoothing_att_o(self.attn.add_v_proj, self.attn.to_add_out, scale2)
+        
+        if self.verbose:
+            status = "✅ Attention Output smoothing completed successfully"
+            if not share_scale:
+                status = "⚠️ Attention Output smoothing completed (outputs may have changed)"
+            logger.info(status)
+            logger.info("=" * 50)
     
     def do_smooth(self):
         """
@@ -214,9 +326,18 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         This is the main entry point for applying the complete set of anti-smoothing
         transformations that are guaranteed to preserve model outputs.
         """
+        if self.verbose:
+            logger.info("🚀 Starting complete anti-smoothing transformation sequence...")
+            
+        start_time = time.time()
         self.do_smooth_qkv()
         self.do_smooth_mlp_up()
         self.do_smooth_att_o(share_scale=True)
+        
+        if self.verbose:
+            duration = time.time() - start_time
+            logger.info(f"✅ Complete anti-smoothing transformation completed in {duration:.2f} seconds")
+            logger.info("🔍 All transformations are output-preserving")
     
     def load_from_flux_transformer_block(self, block: FluxTransformerBlock):
         """
@@ -228,13 +349,30 @@ class FluxTransformerBlock_anti(FluxTransformerBlock):
         Raises:
             ValueError: If a module in the source block doesn't exist in this block
         """
+        if self.verbose:
+            logger.info("📥 Loading parameters from standard FluxTransformerBlock...")
+            
+        param_count = 0
         for name, module in block.named_children():
             if hasattr(self, name):
-                getattr(self, name).load_state_dict(module.state_dict())
+                source_module = getattr(block, name)
+                target_module = getattr(self, name)
+                
+                # Count parameters being transferred
+                module_params = sum(p.numel() for p in source_module.parameters())
+                param_count += module_params
+                
+                if self.verbose:
+                    logger.info(f"  - Loading module '{name}' with {module_params:,} parameters")
+                    
+                target_module.load_state_dict(source_module.state_dict())
             else:
                 raise ValueError(f"Module {name} not found in FluxTransformerBlock_anti")
         
-def get_dummy_input(batch_size: int, seq_length: int, dim: int) -> Dict[str, Any]:
+        if self.verbose:
+            logger.info(f"✅ Successfully loaded {param_count:,} parameters")
+        
+def get_dummy_input(batch_size: int, seq_length: int, dim: int, device: str = 'cpu') -> Dict[str, Any]:
     """
     Create dummy inputs for testing transformer blocks.
     
@@ -242,17 +380,22 @@ def get_dummy_input(batch_size: int, seq_length: int, dim: int) -> Dict[str, Any
         batch_size: Number of samples in a batch
         seq_length: Length of input sequences
         dim: Model hidden dimension
+        device: Device to create tensors on ('cpu' or 'cuda')
         
     Returns:
         Dictionary containing input tensors for the transformer block
     """
-    # Create input tensors on CPU
-    hidden_states = torch.randn(batch_size, seq_length, dim, device='cpu')
-    encoder_hidden_states = torch.randn(batch_size, seq_length, dim, device='cpu')
-    temb = torch.randn(batch_size, dim, device='cpu')
+    logger.info(f"🧪 Creating test inputs: batch_size={batch_size}, seq_length={seq_length}, dim={dim}, device='{device}'")
+    
+    # Create input tensors
+    hidden_states = torch.randn(batch_size, seq_length, dim, device=device)
+    encoder_hidden_states = torch.randn(batch_size, seq_length, dim, device=device)
+    temb = torch.randn(batch_size, dim, device=device)
     
     # Optional: image rotary embeddings (None for this test)
     image_rotary_emb = None
+    
+    logger.info("✅ Test inputs created successfully")
     
     return dict(
         hidden_states=hidden_states,
@@ -264,8 +407,16 @@ def get_dummy_input(batch_size: int, seq_length: int, dim: int) -> Dict[str, Any
 
 from py3_tools.py_debug import Debugger
 # Debugger.debug_flag = True
+
 @Debugger.attach_on_error()
-def test_flux_transformer_block_anti_smooth():
+def test_flux_transformer_block_anti_smooth(dim: int = 4, 
+                                            num_attention_heads: int = 1,
+                                            attention_head_dim: int = 4, 
+                                            batch_size: int = 1, 
+                                            seq_length: int = 3,
+                                            device: str = 'cpu',
+                                            smoothing_type: SmoothingType = SmoothingType.ALL,
+                                            verbose: bool = True):
     """
     Test the FluxTransformerBlock_anti with smoothing.
     
@@ -273,58 +424,194 @@ def test_flux_transformer_block_anti_smooth():
     1. Creates a regular and an anti-smoothed transformer block
     2. Applies smoothing transformations
     3. Verifies that outputs match after forward passes
+    
+    Args:
+        dim: Model dimension
+        num_attention_heads: Number of attention heads
+        attention_head_dim: Dimension of each attention head
+        batch_size: Batch size for test input
+        seq_length: Sequence length for test input
+        device: Device to run the test on ('cpu' or 'cuda')
+        smoothing_type: Type of smoothing operation to apply
+        verbose: Whether to print detailed logs
     """
-    # Define model parameters
-    dim = 4  # Example dimension
-    num_attention_heads = 1
-    attention_head_dim = 4
-    batch_size = 1
-    seq_length = 3  # Common sequence length for text tokens
+    logger.info("=" * 80)
+    logger.info("🚀 STARTING FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST")
+    logger.info("=" * 80)
+    
+    # Show test configuration
+    logger.info("📋 Test Configuration:")
+    logger.info(f"  - Model dimension: {dim}")
+    logger.info(f"  - Attention heads: {num_attention_heads}")
+    logger.info(f"  - Attention head dimension: {attention_head_dim}")
+    logger.info(f"  - Batch size: {batch_size}")
+    logger.info(f"  - Sequence length: {seq_length}")
+    logger.info(f"  - Device: {device}")
+    logger.info(f"  - Smoothing type: {smoothing_type}")
+    logger.info(f"  - Verbose mode: {verbose}")
+    
+    # Check if CUDA is requested but not available
+    if device == 'cuda' and not torch.cuda.is_available():
+        logger.warning("⚠️ CUDA requested but not available. Falling back to CPU.")
+        device = 'cpu'
+    
+    start_time = time.time()
     
     # Create regular transformer block
+    logger.info("🏗️ Creating standard FluxTransformerBlock...")
     block = FluxTransformerBlock(
         dim=dim,
         num_attention_heads=num_attention_heads,
         attention_head_dim=attention_head_dim,
         is_tp=False
-    ).eval()
+    ).to(device).eval()
     
     # Create anti-smoothed block and load weights from regular block
+    logger.info("🏗️ Creating anti-smoothing FluxTransformerBlock...")
     block_anti = FluxTransformerBlock_anti(
         dim=dim,
         num_attention_heads=num_attention_heads,
         attention_head_dim=attention_head_dim,
-        is_tp=False
-    ).eval()
+        is_tp=False,
+        verbose=verbose
+    ).to(device).eval()
+    
+    logger.info("📥 Loading weights from standard block to anti-smoothing block...")
     block_anti.load_from_flux_transformer_block(block)
 
-    # Apply anti-smoothing transformations - uncomment specific options as needed
-    block_anti.do_smooth()
+    # Apply selected anti-smoothing transformation
+    logger.info(f"🔄 Applying anti-smoothing transformation: {smoothing_type}")
     
-    # Uncomment to test other smoothing variants:
-    # block_anti.do_smooth_att_o(share_scale=False)  # [Warning] This will cause different outputs
-    # block_anti.do_smooth_mlp_down()  # [Warning] This will cause different outputs
+    if smoothing_type == SmoothingType.ALL:
+        block_anti.do_smooth()
+    elif smoothing_type == SmoothingType.QKV:
+        block_anti.do_smooth_qkv()
+    elif smoothing_type == SmoothingType.MLP_UP:
+        block_anti.do_smooth_mlp_up()
+    elif smoothing_type == SmoothingType.MLP_DOWN:
+        logger.warning("⚠️ MLP_DOWN smoothing may change model outputs!")
+        block_anti.do_smooth_mlp_down()
+    elif smoothing_type == SmoothingType.ATT_O:
+        block_anti.do_smooth_att_o(share_scale=True)
     
     # Generate test inputs
-    kwargs = get_dummy_input(batch_size, seq_length, dim)
+    logger.info("🧪 Generating test inputs...")
+    kwargs = get_dummy_input(batch_size, seq_length, dim, device)
     
     # Perform forward passes
+    logger.info("🔄 Running forward pass through standard block...")
+    with torch.no_grad():
+        output = block(**kwargs)
+        
+    logger.info("🔄 Running forward pass through anti-smoothing block...")
     with torch.no_grad():
         output_anti = block_anti(**kwargs)
-        output = block(**kwargs)
     
     # Check outputs match
+    logger.info("🔍 Comparing outputs...")
     error0 = torch.abs(output[0] - output_anti[0]).mean().item()
     error1 = torch.abs(output[1] - output_anti[1]).mean().item()
-    print(f'Error in hidden states: {error0:.8f}')
-    print(f'Error in encoder hidden states: {error1:.8f}')
+    logger.info(f'📊 Mean Absolut Error in hidden states: {error0:.8f}')
+    logger.info(f'📊 Mean Absolut Error in encoder hidden states: {error1:.8f}')
     
-    assert torch.allclose(output[0], output_anti[0]), \
-        f"Output hidden states do not match, mse: {error0:.8f}"
-    assert torch.allclose(output[1], output_anti[1]), \
-        f"Output encoder hidden states do not match, mse: {error1:.8f}"
+    # Verify outputs match with detailed error information
+    try:
+        assert torch.allclose(output[0], output_anti[0]), \
+            f"Output hidden states do not match, mean error: {error0:.8f}"
+        assert torch.allclose(output[1], output_anti[1]), \
+            f"Output encoder hidden states do not match, mean error: {error1:.8f}"
+        
+        elapsed_time = time.time() - start_time
+        logger.info("=" * 80)
+        logger.info(f"✅ TEST PASSED: FluxTransformerBlock anti-smoothing works correctly!")
+        logger.info(f"⏱️ Test completed in {elapsed_time:.2f} seconds")
+        logger.info("=" * 80)
+        return True
+    except AssertionError as e:
+        logger.error("=" * 80)
+        logger.error(f"❌ TEST FAILED: {str(e)}")
+        logger.error("=" * 80)
+        return False
+
+def main():
+    """
+    Main entry point with command-line argument parsing.
+    """
+    parser = argparse.ArgumentParser(
+        description="Test FluxTransformerBlock anti-smoothing techniques",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     
-    print("✓ Test passed: FluxTransformerBlock_anti smoothing works correctly")
+    # Model configuration
+    parser.add_argument("--dim", type=int, default=4, 
+                        help="Model dimension")
+    parser.add_argument("--heads", type=int, default=1, 
+                        help="Number of attention heads")
+    parser.add_argument("--head-dim", type=int, default=4, 
+                        help="Dimension of each attention head")
+    
+    # Test input configuration
+    parser.add_argument("--batch-size", type=int, default=1, 
+                        help="Batch size for test input")
+    parser.add_argument("--seq-length", type=int, default=3, 
+                        help="Sequence length for test input")
+    
+    # Hardware configuration
+    parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda"],
+                        help="Device to run the test on")
+    
+    # Smoothing configuration
+    parser.add_argument("--smoothing", type=str, default="all", 
+                        choices=["all", "qkv", "mlp_up", "mlp_down", "att_o"],
+                        help="Type of smoothing operation to apply")
+    
+    # Logging configuration
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable detailed logging")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress all logging except errors")
+    
+    args = parser.parse_args()
+    
+    # Set logging level based on quiet flag
+    if args.quiet:
+        logger.setLevel(logging.ERROR)
+    elif args.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+    
+    # Display welcome banner
+    if not args.quiet:
+        print("\n" + "=" * 80)
+        print("🚀 FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST")
+        print("=" * 80)
+        print("\nThis test verifies that anti-smoothing transformations preserve model outputs.")
+        print("These transformations can be used to optimize model performance while")
+        print("maintaining functional equivalence.\n")
+        
+    # Convert string smoothing type to enum
+    smoothing_type = SmoothingType(args.smoothing)
+    
+    # Run the test
+    success = test_flux_transformer_block_anti_smooth(
+        dim=args.dim,
+        num_attention_heads=args.heads,
+        attention_head_dim=args.head_dim,
+        batch_size=args.batch_size,
+        seq_length=args.seq_length,
+        device=args.device,
+        smoothing_type=smoothing_type,
+        verbose=args.verbose
+    )
+    
+    # Set exit code based on test result
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    test_flux_transformer_block_anti_smooth()
+    print("=" * 80)
+    print("🚀 FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST")
+    print("=" * 80)
+    print(f"\n📁 Current test file path: {os.path.abspath(__file__)}")
+    print("\nRun with --help to see available options.\n")
+    main()
