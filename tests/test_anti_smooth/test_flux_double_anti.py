@@ -408,15 +408,159 @@ def get_dummy_input(batch_size: int, seq_length: int, dim: int, device: str = 'c
 from py3_tools.py_debug import Debugger
 # Debugger.debug_flag = True
 
+def display_welcome_banner(args=None):
+    """
+    Display a welcome banner with colorful information about the script.
+    
+    Args:
+        args: Command line arguments (if provided)
+    """
+    import shutil
+    
+    # Get terminal width
+    terminal_width = shutil.get_terminal_size().columns
+    # Ensure minimum width
+    width = max(terminal_width, 80)
+    
+    def center_text(text, width=width):
+        return text.center(width)
+    
+    # Show colorful banner if not in quiet mode
+    if args is None or not args.quiet:
+        # Colors for terminal output
+        CYAN = '\033[96m'
+        YELLOW = '\033[93m'
+        GREEN = '\033[92m'
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        RESET = '\033[0m'
+        
+        # Banner
+        print("\n" + "=" * width)
+        print(center_text(f"{BOLD}{CYAN}FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST{RESET}"))
+        print("=" * width)
+        
+        # Script description
+        print(f"\n{BOLD}Description:{RESET}")
+        print("  This test verifies that anti-smoothing transformations preserve model outputs.")
+        print("  These transformations can be used to optimize model performance while")
+        print("  maintaining functional equivalence.")
+        
+        # File information
+        print(f"\n{BOLD}📁 Current test file:{RESET} {os.path.abspath(__file__)}")
+        
+        # Command examples if first run with default parameters
+        if args is None or (not args.verbose and not args.quiet and args.smoothing == "all" 
+                           and not args.disable_att_o_share_scale
+                           and args.dim == 4 and args.batch_size == 1):
+            print(f"\n{BOLD}{YELLOW}First time running this script?{RESET} Try these example commands:")
+            print(f"\n{GREEN}Available smoothing operations:{RESET}")
+            print(f"  • {BOLD}all{RESET}: Apply all output-preserving smoothing operations")
+            print(f"  • {BOLD}qkv{RESET}: Only smooth query, key, value projections")
+            print(f"  • {BOLD}mlp_up{RESET}: Only smooth MLP up-projections")
+            print(f"  • {BOLD}att_o{RESET}: Only smooth attention output projections")
+            print(f"  • {RED}mlp_down{RESET}: Smooth MLP down-projections (warning: may change outputs)")
+            
+            print(f"\n{GREEN}Example commands:{RESET}")
+            print(f"  • Basic test with full verbosity:")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --verbose{RESET}")
+            print(f"  • Test specific smoothing operation:")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing qkv --verbose{RESET}")
+            print(f"  • Run on CUDA device (if available):")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --device cuda --verbose{RESET}")
+            print(f"  • Use larger model for testing:")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --dim 32 --heads 4 --head-dim 8{RESET}")
+            print(f"  • {RED}Experimental{RESET}: Test without preserving outputs:")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --disable_att_o_share_scale{RESET}")
+            
+            print(f"\n{BOLD}{CYAN}For complete documentation:{RESET}")
+            print(f"    {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --help{RESET}")
+        
+        print("\n" + "=" * width + "\n")
+
+def display_results_summary(success, elapsed_time, args):
+    """
+    Display a summary of test results with timing and next steps.
+    
+    Args:
+        success: Whether the test was successful
+        elapsed_time: Time taken to run the test
+        args: Command line arguments
+    """
+    import shutil
+    
+    # Get terminal width
+    terminal_width = shutil.get_terminal_size().columns
+    # Ensure minimum width
+    width = max(terminal_width, 80)
+    
+    # Colors for terminal output
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    CYAN = '\033[96m'
+    BOLD = '\033[1m'
+    RESET = '\033[0m'
+    
+    print("\n" + "=" * width)
+    
+    # Show test results
+    if success:
+        print(f"{GREEN}{BOLD}✅ TEST PASSED: FluxTransformerBlock anti-smoothing works correctly!{RESET}")
+        print(f"⏱️  Test completed in {elapsed_time:.2f} seconds")
+        
+        # Suggest next steps if this was the default configuration
+        if (args.smoothing == "all" and not args.disable_att_o_share_scale
+           and args.dim == 4 and args.batch_size == 1):
+            print(f"\n{YELLOW}🔍 Next steps you might want to try:{RESET}")
+            print(f"  • Run with specific smoothing operations: {BOLD}--smoothing qkv{RESET} or {BOLD}--smoothing att_o{RESET}")
+            print(f"  • Test with larger dimensions: {BOLD}--dim 32 --heads 4 --head-dim 8{RESET}")
+            print(f"  • Run on GPU (if available): {BOLD}--device cuda{RESET}")
+    else:
+        print(f"{RED}{BOLD}❌ TEST FAILED!{RESET}")
+        print(f"Please check the error messages above for details.")
+        print(f"\n{YELLOW}Troubleshooting tips:{RESET}")
+        print(f"  • Try with verbose logging: {BOLD}--verbose{RESET}")
+        print(f"  • Ensure PyTorch and FLUX1dev dependencies are correctly installed")
+        print(f"  • Check if the model architecture has changed")
+    
+    print("\n" + "=" * width)
+    
+    # Always show command reference at the end
+    print(f"\n{CYAN}Command Reference:{RESET}")
+    print(f"""
+Try these following commands to explore different features:
+
+• Run all smoothing operations with detailed logs:
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing all --verbose{RESET}
+
+• Run only QKV smoothing:
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing qkv --verbose{RESET}
+
+• Run only MLP_UP smoothing:
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing mlp_up --verbose{RESET}
+
+• Run only ATT_O smoothing:
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --verbose{RESET}
+
+• [Experimental] Run MLP_DOWN smoothing (may alter outputs):
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing mlp_down --verbose{RESET}
+
+• [Experimental] Run ATT_O with separate scales (may alter outputs):
+  {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --disable_att_o_share_scale --verbose{RESET}
+""")
+
 @Debugger.attach_on_error()
-def test_flux_transformer_block_anti_smooth(dim: int = 4, 
+def test_flux_transformer_block_anti_smooth(args,
+                                            dim: int = 4, 
                                             num_attention_heads: int = 1,
                                             attention_head_dim: int = 4, 
                                             batch_size: int = 1, 
                                             seq_length: int = 3,
                                             device: str = 'cpu',
                                             smoothing_type: SmoothingType = SmoothingType.ALL,
-                                            verbose: bool = True):
+                                            verbose: bool = True,
+                                            ):
     """
     Test the FluxTransformerBlock_anti with smoothing.
     
@@ -426,6 +570,7 @@ def test_flux_transformer_block_anti_smooth(dim: int = 4,
     3. Verifies that outputs match after forward passes
     
     Args:
+        args: Command line arguments
         dim: Model dimension
         num_attention_heads: Number of attention heads
         attention_head_dim: Dimension of each attention head
@@ -492,7 +637,12 @@ def test_flux_transformer_block_anti_smooth(dim: int = 4,
         logger.warning("⚠️ MLP_DOWN smoothing may change model outputs!")
         block_anti.do_smooth_mlp_down()
     elif smoothing_type == SmoothingType.ATT_O:
-        block_anti.do_smooth_att_o(share_scale=True)
+        if args.disable_att_o_share_scale:
+            logger.warning("⚠️ ATT_O smoothing with different scales may change model outputs!")
+            block_anti.do_smooth_att_o(share_scale=False)
+        else:
+            logger.info("🔄 Sharing scales for ATT_O smoothing to preserve outputs")
+            block_anti.do_smooth_att_o(share_scale=True)
     
     # Generate test inputs
     logger.info("🧪 Generating test inputs...")
@@ -511,8 +661,8 @@ def test_flux_transformer_block_anti_smooth(dim: int = 4,
     logger.info("🔍 Comparing outputs...")
     error0 = torch.abs(output[0] - output_anti[0]).mean().item()
     error1 = torch.abs(output[1] - output_anti[1]).mean().item()
-    logger.info(f'📊 Mean Absolut Error in hidden states: {error0:.8f}')
-    logger.info(f'📊 Mean Absolut Error in encoder hidden states: {error1:.8f}')
+    logger.info(f'📊 Mean Absolute Error in hidden states: {error0:.8f}')
+    logger.info(f'📊 Mean Absolute Error in encoder hidden states: {error1:.8f}')
     
     # Verify outputs match with detailed error information
     try:
@@ -526,12 +676,12 @@ def test_flux_transformer_block_anti_smooth(dim: int = 4,
         logger.info(f"✅ TEST PASSED: FluxTransformerBlock anti-smoothing works correctly!")
         logger.info(f"⏱️ Test completed in {elapsed_time:.2f} seconds")
         logger.info("=" * 80)
-        return True
+        return True, elapsed_time
     except AssertionError as e:
         logger.error("=" * 80)
         logger.error(f"❌ TEST FAILED: {str(e)}")
         logger.error("=" * 80)
-        return False
+        return False, time.time() - start_time
 
 def main():
     """
@@ -564,6 +714,8 @@ def main():
     parser.add_argument("--smoothing", type=str, default="all", 
                         choices=["all", "qkv", "mlp_up", "mlp_down", "att_o"],
                         help="Type of smoothing operation to apply")
+    parser.add_argument("--disable_att_o_share_scale", action="store_true", 
+                        help="Disable sharing of ATTN_O scales")
     
     # Logging configuration
     parser.add_argument("--verbose", action="store_true",
@@ -571,6 +723,10 @@ def main():
     parser.add_argument("--quiet", action="store_true",
                         help="Suppress all logging except errors")
     
+    # Visualization
+    parser.add_argument("--no-banner", action="store_true",
+                        help="Hide the welcome banner and usage hints")
+        
     args = parser.parse_args()
     
     # Set logging level based on quiet flag
@@ -581,20 +737,16 @@ def main():
     else:
         logger.setLevel(logging.INFO)
     
-    # Display welcome banner
-    if not args.quiet:
-        print("\n" + "=" * 80)
-        print("🚀 FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST")
-        print("=" * 80)
-        print("\nThis test verifies that anti-smoothing transformations preserve model outputs.")
-        print("These transformations can be used to optimize model performance while")
-        print("maintaining functional equivalence.\n")
+    # Display welcome banner with usage information
+    if not args.no_banner:
+        display_welcome_banner(args)
         
     # Convert string smoothing type to enum
     smoothing_type = SmoothingType(args.smoothing)
     
     # Run the test
-    success = test_flux_transformer_block_anti_smooth(
+    success, elapsed_time = test_flux_transformer_block_anti_smooth(
+        args,
         dim=args.dim,
         num_attention_heads=args.heads,
         attention_head_dim=args.head_dim,
@@ -605,13 +757,34 @@ def main():
         verbose=args.verbose
     )
     
+    # Display summary with next steps suggestions
+    if not args.quiet and not args.no_banner:
+        display_results_summary(success, elapsed_time, args)
+    
     # Set exit code based on test result
     sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    print("=" * 80)
-    print("🚀 FLUX TRANSFORMER BLOCK ANTI-SMOOTHING TEST")
-    print("=" * 80)
-    print(f"\n📁 Current test file path: {os.path.abspath(__file__)}")
-    print("\nRun with --help to see available options.\n")
+    # Run the main function with command line arguments
     main()
+
+Doc_String = """
+Try this following command to run the test:
+
+- : Smooth all components(QKV, MLP_UP, ATT_O):
+```
+python -m tests.test_anti_smooth.test_flux_double_anti --smoothing all --verbose
+```
+
+- : Smooth only MLP_DOWN components:
+```
+python -m tests.test_anti_smooth.test_flux_double_anti --smoothing mlp_down --verbose
+```
+
+- : Smooth only image ATTN_O and context ATTN_O components using different scales:
+
+```
+python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --verbose --disable_att_o_share_scale
+```
+
+"""

@@ -42,17 +42,27 @@ graph TD
 $$
 \text{输出误差} \quad \delta_y = \max_{i} \left| y_i^{\text{(orig)}} - y_i^{\text{(fused)}} \right|
 $$
-要求$$\delta_y < 10^{-5}$$以保证数值等价性。
+要求$\delta_y < 10^{-5}$以保证数值等价性。
 
 ##### 运行验证代码：
-- install
+
+- Install from pip+git
+```shell
+pip install git+https://github.com/hhqx/FLUX.1-dev.git
+```
+
+
+- [Optional] install from source
 ```shell
 # git clone <This repo>
 git clone git@github.com:hhqx/FLUX.1-dev.git
 
 cd FLUX.1-dev
 pip install -e .
+```
 
+
+```
 # 运行验证代码
 python -m tests.test_anti_smooth.test_flux_double_anti
 ```
@@ -62,15 +72,8 @@ python -m tests.test_anti_smooth.test_flux_double_anti
 
 输出结果：
 > $ python -m tests.test_anti_smooth.test_flux_double_anti
->
-> scale1: tensor([2.3367, 2.1288, 2.2345, 2.2303]), scale2: tensor([2.3367, 2.1288, 2.2345, 2.2303])
->
-> Error in hidden states: 0.00000001
->
-> Error in encoder hidden states: 0.00000001
->
-> ✓ Test passed: FluxTransformerBlock_anti smoothing works correctly
 
+![example-test_result](image.png)
 
 ---
 #### 第一章 绪论  
@@ -498,3 +501,43 @@ graph TD
 | $$\text{diag}(\cdot)$$ | 对角矩阵化算子 | - |  
 | $$\odot$$ | 逐元素乘法 | - |  
 | $$f(\cdot)$$ | 非线性激活函数 | - |
+
+### 安装与运行
+
+#### 安装方法
+
+提供两种安装方式：
+
+1. **从源代码安装** (推荐用于开发)
+```bash
+# 克隆项目仓库
+git clone git@github.com:hhqx/FLUX.1-dev.git
+
+# 进入项目目录
+cd FLUX.1-dev
+
+# 以开发模式安装
+pip install -e .
+```
+
+2. **直接从GitHub安装** (适用于快速试用)
+```bash
+pip install git+https://github.com/hhqx/FLUX.1-dev.git
+```
+
+#### 运行测试
+
+执行验证测试脚本：
+
+```bash
+# 基础运行
+python -m tests.test_anti_smooth.test_flux_double_anti
+
+# 详细模式运行（显示完整日志）
+python -m tests.test_anti_smooth.test_flux_double_anti --verbose
+```
+
+更多运行选项请参考：
+```bash
+python -m tests.test_anti_smooth.test_flux_double_anti --help
+```
