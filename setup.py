@@ -6,11 +6,13 @@ def read_requirements(filename='requirements.txt'):
 
 setup(
     name="FLUX1dev",
-    version="0.1.0",
+    version="0.1.1",
     description="FLUX Temp development package",
     author="HQX",
     author_email="hqx@example.com",
-    packages=find_packages(),
+    # 修改包含逻辑：只包含必要的包
+    packages=['FLUX1dev', 'tests'],  # 明确列出需要的包
     install_requires=read_requirements(),
     python_requires=">=3.8",
+    include_package_data=True,
 )

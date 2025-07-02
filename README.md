@@ -1,4 +1,3 @@
-
 ## 原仓的README
 
 详情参考：
@@ -62,9 +61,14 @@ graph TD
 #### 快速开始
 
 ##### 运行验证代码：
-```
-# Install
-pip install git+https://github.com/hhqx/FLUX.1-dev.git
+```bash
+# 方法1: 从源代码安装（推荐）
+git clone https://github.com/hhqx/FLUX.1-dev.git
+cd FLUX.1-dev
+pip install -e .
+
+# 方法2: 直接从GitHub安装
+pip install "FLUX1dev @ git+https://github.com/hhqx/FLUX.1-dev.git"
 
 # 运行验证代码
 python -m tests.test_anti_smooth.test_flux_double_anti

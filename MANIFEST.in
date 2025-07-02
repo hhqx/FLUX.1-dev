@@ -1,0 +1,7 @@
+# Include Python test modules required for running tests
+recursive-include tests *.py
+# Include core package modules
+recursive-include FLUX1dev *.py
+# Include only essential package files
+include requirements.txt
+include README.md
