@@ -548,6 +548,9 @@ Try these following commands to explore different features:
 
 • [Experimental] Run ATT_O with separate scales (may alter outputs):
   {BOLD}python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --disable_att_o_share_scale --verbose{RESET}
+
+• [Uninstall] Uninstall current FLUX1dev package for anti_smooth test:
+  {BOLD}pip uninstall FLUX1dev -y{RESET}
 """)
 
 @Debugger.attach_on_error()
@@ -785,6 +788,12 @@ python -m tests.test_anti_smooth.test_flux_double_anti --smoothing mlp_down --ve
 
 ```
 python -m tests.test_anti_smooth.test_flux_double_anti --smoothing att_o --verbose --disable_att_o_share_scale
+```
+
+- : Uninstall current FLUX1dev package for anti_smooth test:
+
+```
+pip uninstall FLUX1dev -y
 ```
 
 """
