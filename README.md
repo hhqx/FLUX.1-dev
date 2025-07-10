@@ -80,5 +80,5 @@ python -m tests.test_anti_smooth.test_flux_double_anti
 输出结果：
 > $ python -m tests.test_anti_smooth.test_flux_double_anti
 
-![example-test_result](./docs/image.png)
+![example-test_result](https://hhqx.github.io/FLUX.1-dev/image.png)
 
