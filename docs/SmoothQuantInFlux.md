@@ -7,7 +7,7 @@
 
 #### 算法实现与验证demo
 
-代码详情参考 [test_flux_double_anti.py](../tests/test_anti_smooth/test_flux_double_anti.py)
+代码详情参考 [test_flux_double_anti.py](https://github.com/hhqx/FLUX.1-dev/blob/main/tests/test_anti_smooth/test_flux_double_anti.py)
 
 ```mermaid
 graph TD
@@ -125,8 +125,8 @@ graph TD
         Chunk --> |scale_msa| ScalePath["×"]
         Input[输入 x] --> Norm["norm(x)"]
         Norm --> ScalePath
-        ScalePath --> |"×(1+scale_msa)"| ShiftPath
-        ShiftPath --> |"+shift_msa"| Output["输出"]
+        ScalePath --> |"X*(1+scale_msa)"| ShiftPath["add"]
+        ShiftPath --> |"X*(1+scale_msa)+shift_msa"| Output["输出"]
     end
 ```
 
@@ -153,7 +153,7 @@ $$
 
 ```mermaid
 graph TD
-    subgraph "QKV Projection and AdaLayerNorm Scale Fusion"
+    subgraph "QKV AdaNorm 异常值抑制"
         Ada["AdaLayerNormZero"] --> QKV["QKV Projection"]
         QKV --> Out["Output"]
         
